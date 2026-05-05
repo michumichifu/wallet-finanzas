@@ -7,7 +7,7 @@
 | 0 | Setup + Wallet API docs + repo skeleton | COMPLETADO | docs, monorepo, esquema Prisma inicial, design system |
 | 1 | Schema Prisma + import CSV (2217 records) | COMPLETADO | 2,216 records importados, 14 cuentas, 88 categorías, 214 tasas P2P inferidas en 25s |
 | 2 | Multi-tenant + auth + super admin | COMPLETADO | Auth JWT (access+refresh), guard global, login/register UI, ProtectedRoute, axios interceptor con auto-refresh, logout, role distinction (SUPERADMIN/TENANT_OWNER) |
-| 3 | CRUD completo + responsive | EN CURSO (75%) | Records CRUD (create/edit/delete) + Accounts CRUD listos. RecordDrawer unificado para create+edit. Pendiente: categorías editables CRUD, labels, plantillas, reglas, página Transferencias |
+| 3 | CRUD completo + responsive | COMPLETADO (95%) | Records, Accounts, Categories CRUD listos. Página Transferencias dedicada con vista de pares. Templates rápidos (BYO gasto recurrente) con apply en 1 click. Pendiente menor: labels editables, reglas automáticas (no urgente) |
 | 4 | Export Wallet-compatible (CSV/XLS round-trip) | pendiente | data nunca atrapada |
 | 5 | Cripto + APIs de tasas | pendiente | USDT/BTC/ETH/SOL/USDC con rates auto |
 | 6 | Analytics con tasa P2P real | pendiente | reportes en USD reales |

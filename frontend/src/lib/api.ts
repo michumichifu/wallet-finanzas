@@ -141,15 +141,62 @@ export interface RecordListItem {
   category: { id: string; name: string; slug: string } | null
 }
 
+export type CategoryKind = 'EXPENSE' | 'INCOME' | 'BOTH' | 'TRANSFER' | 'SYSTEM'
+
 export interface CategoryNode {
   id: string
   slug: string
   name: string
-  kind: 'EXPENSE' | 'INCOME' | 'BOTH' | 'TRANSFER' | 'SYSTEM'
+  kind: CategoryKind
   color: string | null
   iconKey: string | null
   position: number
   children: CategoryNode[]
+}
+
+export interface CategoryFlat {
+  id: string
+  tenantId: string
+  slug: string
+  name: string
+  kind: CategoryKind
+  parentId: string | null
+  color: string | null
+  iconKey: string | null
+  position: number
+  isSystem: boolean
+  isArchived: boolean
+}
+
+export interface TransferPairView {
+  id: string
+  occurredAt: string
+  appliedRate: string | null
+  rateSource: string | null
+  notes: string | null
+  from: TransferLeg
+  to: TransferLeg
+}
+
+export interface TransferLeg {
+  recordId: string
+  account: { id: string; name: string; currencyCode: string }
+  amount: string
+  amountUsd: number | null
+  note: string | null
+}
+
+export interface TemplateView {
+  id: string
+  name: string
+  type: 'EXPENSE' | 'INCOME' | 'TRANSFER'
+  amount: number
+  currencyCode: string
+  accountId: string
+  categoryId: string | null
+  payee: string | null
+  note: string | null
+  createdAt: string
 }
 
 export interface CreateRecordPayload {
@@ -196,6 +243,24 @@ export const Api = {
 
   // Categories
   listCategoryTree: () => api.get<CategoryNode[]>('/categories/tree').then((r) => r.data),
+  listCategoriesFlat: () => api.get<CategoryFlat[]>('/categories').then((r) => r.data),
+  createCategory: (payload: { name: string; slug?: string; kind?: CategoryKind; parentId?: string; color?: string; iconKey?: string; position?: number }) =>
+    api.post<CategoryFlat>('/categories', payload).then((r) => r.data),
+  patchCategory: (id: string, payload: Partial<{ name: string; slug: string; kind: CategoryKind; parentId: string | null; color: string; iconKey: string; position: number; isArchived: boolean }>) =>
+    api.patch<CategoryFlat>(`/categories/${id}`, payload).then((r) => r.data),
+  deleteCategory: (id: string) =>
+    api.delete<{ archived: boolean; deleted: boolean }>(`/categories/${id}`).then((r) => r.data),
+
+  // Transfers
+  listTransfers: (params: { from?: string; to?: string; page?: number; pageSize?: number }) =>
+    api.get<{ items: TransferPairView[]; total: number; page: number; pageSize: number }>('/transfers', { params }).then((r) => r.data),
+
+  // Templates
+  listTemplates: () => api.get<TemplateView[]>('/templates').then((r) => r.data),
+  createTemplate: (payload: { name: string; type: 'EXPENSE' | 'INCOME'; accountId: string; categoryId?: string; amount: number; currencyCode: string; payee?: string; note?: string }) =>
+    api.post<TemplateView>('/templates', payload).then((r) => r.data),
+  deleteTemplate: (id: string) => api.delete<{ deleted: boolean }>(`/templates/${id}`).then((r) => r.data),
+  applyTemplate: (id: string) => api.post<{ id: string }>(`/templates/${id}/apply`).then((r) => r.data),
 
   // Dashboard
   dashboardSummary: (from: string, to: string) =>

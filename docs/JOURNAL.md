@@ -313,3 +313,62 @@ Esto dejará 2,217 records importados, ~14 cuentas creadas, ~155 tasas P2P infer
 - Templates / plantillas de gasto rápido (anotar en 3 segundos).
 - Reglas automáticas (auto-categorizar por payee/note).
 - Super admin panel (vista global de tenants, métricas).
+
+---
+
+## 2026-05-05 — Sesión 5: Categorías CRUD + Transferencias + Templates rápidos
+
+**Backend — Categorías CRUD**:
+- `POST /api/categories` — crea con slug auto-generado del nombre (NFD + lowercase + dash). Valida `parentId` ownership.
+- `PATCH /api/categories/:id` — edita name, slug, kind, parentId (con validación de no auto-referencia), color, iconKey, position, isArchived. Bloquea cambios de slug/kind en categorías sistema.
+- `DELETE /api/categories/:id` — soft delete inteligente: si tiene records vinculados o subcategorías, archiva. Sin uso → hard delete. Bloquea borrar categorías sistema.
+
+**Backend — Transferencias dedicadas**:
+- Nuevo módulo `transfers/` con `TransfersService` + `TransfersController`.
+- `GET /api/transfers?from=&to=&page=&pageSize=` — devuelve TransferPairs paginados, no records sueltos. Cada item incluye:
+  - `id`, `occurredAt`, `appliedRate` (la tasa P2P real usada), `rateSource` (BINANCE_P2P, INFERRED_FROM_TRANSFER, etc.), `notes`.
+  - `from`: leg debit con cuenta, monto, monto USD.
+  - `to`: leg credit con cuenta, monto, monto USD.
+- Ordena por `occurredAt desc`. Sirve la vista de pares que en Records aparecía como filas duplicadas.
+
+**Backend — Templates (gasto rápido)**:
+- Nuevo módulo `templates/`.
+- `POST /api/templates` — crea con payload JSON (type, accountId, categoryId, amount, currencyCode, payee, note).
+- `GET /api/templates` — lista las del tenant (orden creación desc).
+- `DELETE /api/templates/:id` — elimina.
+- `POST /api/templates/:id/apply` — crea un Record nuevo desde la plantilla con `occurredAt = now`. Aplica forzado de signo automáticamente (EXPENSE→negativo, INCOME→positivo). Útil para gastos recurrentes (suscripciones, recargas, alquiler).
+
+**Frontend — Página Categorías** (`/categorias`):
+- Lista jerárquica padre → hijo (indentación visual).
+- Badge tipo: Gasto/Ingreso/Ambos/Transferencia/Sistema con paleta semántica.
+- Toggle "mostrar sistema" (por defecto oculta TRANSFER y demás).
+- Botón crear/editar/borrar por fila. Categorías sistema bloqueadas.
+- Drawer con form: nombre, kind, parent (selector con todas las raíces excepto sí misma).
+- Eliminar muestra confirm + maneja la respuesta del backend (archived vs deleted).
+
+**Frontend — Página Transferencias** (`/transferencias`):
+- Vista por pares en cards: fecha + cuenta origen ↓ + cuenta destino ↑ + tasa aplicada + fuente de la tasa.
+- Para tasas != 1, muestra "631.58 VEF/USD" + label de fuente ("P2P inferida", "P2P Binance", "manual", etc.).
+- Botón borrar borra el par completo (deleteRecord en cualquier leg → backend borra ambas).
+- Botón "Nueva" abre el RecordDrawer en modo TRANSFER directo.
+
+**Frontend — Templates rápidos**:
+- Botón "Plantillas" en header del shell (variant secondary).
+- Drawer lista plantillas existentes con icono Zap y botón "Aplicar" en cada una. Click → POST apply → invalida queries → cierra.
+- Drawer separado "Nueva plantilla" con form completo (name, type, account, amount, category, payee, note).
+- Ideal para: pago Internet mensual, recarga celular, suscripciones, almuerzo del día.
+
+**Smoke test ejecutado**:
+- POST categoría "Cripto trading" → slug auto "cripto-trading". DELETE → hard delete (sin uso).
+- POST template "Test almuerzo Bs" 2000 VEF → creado.
+- POST `/templates/:id/apply` → record creado con amount=-2000 (signo aplicado), note copiada, occurredAt=now.
+- DELETE template + DELETE record de prueba → OK.
+
+**Pendiente sesión 6**:
+- Categorías reordenables (drag-and-drop) — feature de pulido.
+- Labels editables (CRUD) — usado para tags secundarios.
+- Reglas automáticas (auto-categorizar nuevos records por patrón en note/payee).
+- Selector de tenant activo en sidebar (cuando el user pertenezca a múltiples).
+- Super admin panel (lista global de tenants, métricas, soporte).
+- Export CSV/XLS compatible con Wallet original (round-trip).
+- Sub-fase de design: ajustar paleta y densidad si el user lo solicita tras usar la app un par de días.

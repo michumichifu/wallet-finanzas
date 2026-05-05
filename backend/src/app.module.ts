@@ -9,6 +9,8 @@ import { AccountsModule } from './accounts/accounts.module'
 import { CategoriesModule } from './categories/categories.module'
 import { RecordsModule } from './records/records.module'
 import { DashboardModule } from './dashboard/dashboard.module'
+import { TransfersModule } from './transfers/transfers.module'
+import { TemplatesModule } from './templates/templates.module'
 import { AuthModule } from './auth/auth.module'
 import { JwtAuthGuard } from './auth/jwt-auth.guard'
 import { HealthController } from './health/health.controller'
@@ -29,6 +31,8 @@ import { validateEnv } from './config/env.validation'
     AccountsModule,
     CategoriesModule,
     RecordsModule,
+    TransfersModule,
+    TemplatesModule,
     DashboardModule,
   ],
   controllers: [HealthController],
