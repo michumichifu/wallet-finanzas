@@ -5,6 +5,7 @@ import type { LucideIcon } from 'lucide-react'
 import { Api, type AccountListItem } from '@/lib/api'
 import { Drawer } from '@/components/ui/Drawer'
 import { Button } from '@/components/ui/Button'
+import { ColorPicker } from '@/components/ui/ColorPicker'
 import { FieldLabel, Input, Select } from '@/components/ui/Input'
 import { resolveLucideIcon } from '@/components/AccountCard'
 import { cn } from '@/lib/cn'
@@ -267,13 +268,7 @@ export function AccountDrawer({ open, onClose, account }: Props) {
                 style={{ backgroundColor: c }}
               />
             ))}
-            <input
-              type="color"
-              value={color}
-              onChange={(e) => setColor(e.target.value)}
-              className="size-7 cursor-pointer rounded-md border border-border bg-transparent"
-              aria-label="Color personalizado"
-            />
+            <ColorPicker value={color} onChange={setColor} ariaLabel="Color personalizado de tarjeta" />
           </div>
         </div>
 
@@ -281,15 +276,8 @@ export function AccountDrawer({ open, onClose, account }: Props) {
           <div className="mb-2 flex items-center justify-between">
             <p className="text-xs font-medium text-fg-muted">Icono</p>
             <div className="flex items-center gap-2">
-              <input
-                type="color"
-                value={iconColor}
-                onChange={(e) => setIconColor(e.target.value)}
-                className="size-6 cursor-pointer rounded-md border border-border bg-transparent"
-                aria-label="Color del icono"
-                title="Color del icono"
-              />
               <span className="text-[10px] text-fg-subtle">color del icono</span>
+              <ColorPicker value={iconColor} onChange={setIconColor} size="sm" ariaLabel="Color del icono" />
             </div>
           </div>
           <div className="grid grid-cols-8 gap-1.5">
