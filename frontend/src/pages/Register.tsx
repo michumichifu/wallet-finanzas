@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Api } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { FieldLabel, Input } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { useAuthStore } from '@/stores/auth.store'
 
 export function RegisterPage() {
@@ -13,6 +14,7 @@ export function RegisterPage() {
 
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
+  const [passwordConfirm, setPasswordConfirm] = useState('')
   const [displayName, setDisplayName] = useState('')
   const [error, setError] = useState<string | null>(null)
 
@@ -69,6 +71,10 @@ export function RegisterPage() {
               setError('La contraseña debe tener al menos 8 caracteres')
               return
             }
+            if (password !== passwordConfirm) {
+              setError('Las contraseñas no coinciden')
+              return
+            }
             m.mutate()
           }}
         >
@@ -88,7 +94,20 @@ export function RegisterPage() {
             </FieldLabel>
             <FieldLabel hint="mín. 8 caracteres">
               Contraseña
-              <Input type="password" autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+              <PasswordInput autoComplete="new-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+            </FieldLabel>
+            <FieldLabel>
+              Confirmar contraseña
+              <PasswordInput
+                autoComplete="new-password"
+                value={passwordConfirm}
+                onChange={(e) => setPasswordConfirm(e.target.value)}
+                placeholder="••••••••"
+                aria-invalid={passwordConfirm.length > 0 && password !== passwordConfirm}
+              />
+              {passwordConfirm.length > 0 && password !== passwordConfirm ? (
+                <span className="text-[10px] text-negative">No coinciden</span>
+              ) : null}
             </FieldLabel>
 
             {error ? (

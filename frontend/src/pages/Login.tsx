@@ -5,6 +5,7 @@ import { useMutation } from '@tanstack/react-query'
 import { Api } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { FieldLabel, Input } from '@/components/ui/Input'
+import { PasswordInput } from '@/components/ui/PasswordInput'
 import { useAuthStore } from '@/stores/auth.store'
 
 export function LoginPage() {
@@ -73,7 +74,7 @@ export function LoginPage() {
             </FieldLabel>
             <FieldLabel>
               Contraseña
-              <Input type="password" autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
+              <PasswordInput autoComplete="current-password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="••••••••" />
             </FieldLabel>
 
             {error ? (
