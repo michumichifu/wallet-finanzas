@@ -2,6 +2,7 @@ import { BadRequestException, ForbiddenException, Injectable, NotFoundException 
 import { Prisma, RateSource, RecordType } from '@prisma/client'
 import { PrismaService } from '@/prisma/prisma.service'
 import { ExchangeService } from '@/exchange/exchange.service'
+import { RulesService } from '@/rules/rules.service'
 import { CreateRecordDto } from './dto/create-record.dto'
 import { UpdateRecordDto } from './dto/update-record.dto'
 import { CreateTransferDto } from './dto/create-transfer.dto'
@@ -36,7 +37,11 @@ const MAX_PAGE_SIZE = 200
 
 @Injectable()
 export class RecordsService {
-  constructor(private readonly prisma: PrismaService, private readonly exchange: ExchangeService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly exchange: ExchangeService,
+    private readonly rules: RulesService,
+  ) {}
 
   async list(tenantId: string, query: RecordListQuery): Promise<{
     items: RecordListItem[]
@@ -149,11 +154,27 @@ export class RecordsService {
     if (dto.type === RecordType.EXPENSE && amount > 0) amount = -amount
     if (dto.type === RecordType.INCOME && amount < 0) amount = -amount
 
+    // Auto-categorizar via reglas si el user no especificó categoría.
+    let finalCategoryId = dto.categoryId ?? null
+    if (!finalCategoryId) {
+      const match = await this.rules.evaluateForRecord(tenantId, {
+        type: dto.type,
+        amount,
+        currencyCode: dto.currencyCode,
+        note: dto.note ?? null,
+        payee: dto.payee ?? null,
+        accountId: dto.accountId,
+        paymentType: dto.paymentType ?? 'CASH',
+        categoryId: null,
+      })
+      if (match?.action.setCategoryId) finalCategoryId = match.action.setCategoryId
+    }
+
     return this.prisma.record.create({
       data: {
         tenantId,
         accountId: dto.accountId,
-        categoryId: dto.categoryId ?? null,
+        categoryId: finalCategoryId,
         type: dto.type,
         amount: new Prisma.Decimal(amount),
         currencyCode: dto.currencyCode,

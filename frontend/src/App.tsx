@@ -7,6 +7,7 @@ import { RecordsPage } from '@/pages/Records'
 import { AccountsPage } from '@/pages/Accounts'
 import { CategoriesPage } from '@/pages/Categories'
 import { TransfersPage } from '@/pages/Transfers'
+import { RulesPage } from '@/pages/Rules'
 import { SettingsPage } from '@/pages/Settings'
 import { LoginPage } from '@/pages/Login'
 import { RegisterPage } from '@/pages/Register'
@@ -38,6 +39,7 @@ export default function App() {
               <Route path="registros" element={<RecordsPage />} />
               <Route path="transferencias" element={<TransfersPage />} />
               <Route path="categorias" element={<CategoriesPage />} />
+              <Route path="reglas" element={<RulesPage />} />
               <Route path="ajustes" element={<SettingsPage />} />
             </Route>
           </Route>

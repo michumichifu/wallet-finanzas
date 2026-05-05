@@ -186,6 +186,33 @@ export interface TransferLeg {
   note: string | null
 }
 
+export interface RuleConditionItem {
+  field: 'note' | 'payee' | 'amount' | 'currencyCode' | 'accountId' | 'paymentType'
+  operator: 'contains' | 'notContains' | 'equals' | 'startsWith' | 'endsWith' | 'gt' | 'gte' | 'lt' | 'lte'
+  value: string | number
+  caseSensitive?: boolean
+}
+
+export interface RuleCondition {
+  combinator?: 'AND' | 'OR'
+  items: RuleConditionItem[]
+}
+
+export interface RuleAction {
+  setCategoryId?: string | null
+}
+
+export interface RuleView {
+  id: string
+  name: string
+  condition: RuleCondition
+  action: RuleAction
+  categoryId: string | null
+  isActive: boolean
+  priority: number
+  createdAt: string
+}
+
 export interface TemplateView {
   id: string
   name: string
@@ -260,6 +287,20 @@ export const Api = {
     const r = await api.get<Blob>('/export/wallet-csv', { params, responseType: 'blob' })
     return r.data as unknown as Blob
   },
+  exportWalletXls: async (params: { from?: string; to?: string }) => {
+    const r = await api.get<Blob>('/export/wallet-xls', { params, responseType: 'blob' })
+    return r.data as unknown as Blob
+  },
+
+  // Rules (auto-categorize)
+  listRules: () => api.get<RuleView[]>('/rules').then((r) => r.data),
+  createRule: (payload: { name: string; condition: RuleCondition; action: RuleAction; isActive?: boolean; priority?: number }) =>
+    api.post<RuleView>('/rules', payload).then((r) => r.data),
+  patchRule: (id: string, payload: Partial<{ name: string; condition: RuleCondition; action: RuleAction; isActive: boolean; priority: number }>) =>
+    api.patch<RuleView>(`/rules/${id}`, payload).then((r) => r.data),
+  deleteRule: (id: string) => api.delete<{ deleted: true }>(`/rules/${id}`).then((r) => r.data),
+  applyAllRules: (overwriteAll = false) =>
+    api.post<{ scanned: number; updated: number }>(`/rules/apply-all`, undefined, { params: { overwriteAll } }).then((r) => r.data),
 
   // Templates
   listTemplates: () => api.get<TemplateView[]>('/templates').then((r) => r.data),

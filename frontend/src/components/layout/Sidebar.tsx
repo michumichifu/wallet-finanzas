@@ -1,5 +1,5 @@
 import { NavLink, useNavigate } from 'react-router-dom'
-import { LayoutDashboard, Receipt, Wallet, FolderTree, Settings, ArrowRightLeft, LogOut } from 'lucide-react'
+import { LayoutDashboard, Receipt, Wallet, FolderTree, Settings, ArrowRightLeft, LogOut, Sparkles } from 'lucide-react'
 import { cn } from '@/lib/cn'
 import { useAuthStore } from '@/stores/auth.store'
 
@@ -16,6 +16,7 @@ const NAV: NavItem[] = [
   { to: '/registros', icon: Receipt, label: 'Registros' },
   { to: '/transferencias', icon: ArrowRightLeft, label: 'Transferencias' },
   { to: '/categorias', icon: FolderTree, label: 'Categorías' },
+  { to: '/reglas', icon: Sparkles, label: 'Reglas' },
   { to: '/ajustes', icon: Settings, label: 'Ajustes' },
 ]
 

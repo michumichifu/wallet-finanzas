@@ -12,30 +12,45 @@ export function SettingsPage() {
   const [exportRange, setExportRange] = useState<'all' | 'this-year' | 'this-month'>('all')
   const [lastExport, setLastExport] = useState<string | null>(null)
 
+  function rangeParams(): { from?: string; to?: string } {
+    if (exportRange === 'all') return {}
+    const now = new Date()
+    if (exportRange === 'this-year') {
+      return {
+        from: new Date(now.getFullYear(), 0, 1).toISOString(),
+        to: new Date(now.getFullYear(), 11, 31, 23, 59, 59).toISOString(),
+      }
+    }
+    return {
+      from: new Date(now.getFullYear(), now.getMonth(), 1).toISOString(),
+      to: new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString(),
+    }
+  }
+
+  function downloadBlob(blob: Blob, ext: 'csv' | 'xls') {
+    const url = URL.createObjectURL(blob)
+    const stamp = new Date().toISOString().slice(0, 10)
+    const a = document.createElement('a')
+    a.href = url
+    a.download = `wallet-export-${stamp}.${ext}`
+    document.body.appendChild(a)
+    a.click()
+    a.remove()
+    URL.revokeObjectURL(url)
+    setLastExport(new Date().toLocaleString('es'))
+  }
+
   const exportCsv = useMutation({
     mutationFn: async () => {
-      const params: { from?: string; to?: string } = {}
-      if (exportRange !== 'all') {
-        const now = new Date()
-        if (exportRange === 'this-year') {
-          params.from = new Date(now.getFullYear(), 0, 1).toISOString()
-          params.to = new Date(now.getFullYear(), 11, 31, 23, 59, 59).toISOString()
-        } else if (exportRange === 'this-month') {
-          params.from = new Date(now.getFullYear(), now.getMonth(), 1).toISOString()
-          params.to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59).toISOString()
-        }
-      }
-      const blob = await Api.exportWalletCsv(params)
-      const url = URL.createObjectURL(blob)
-      const stamp = new Date().toISOString().slice(0, 10)
-      const a = document.createElement('a')
-      a.href = url
-      a.download = `wallet-export-${stamp}.csv`
-      document.body.appendChild(a)
-      a.click()
-      a.remove()
-      URL.revokeObjectURL(url)
-      setLastExport(new Date().toLocaleString('es'))
+      const blob = await Api.exportWalletCsv(rangeParams())
+      downloadBlob(blob, 'csv')
+    },
+  })
+
+  const exportXls = useMutation({
+    mutationFn: async () => {
+      const blob = await Api.exportWalletXls(rangeParams())
+      downloadBlob(blob, 'xls')
     },
   })
 
@@ -100,9 +115,13 @@ export function SettingsPage() {
                 </button>
               ))}
             </div>
-            <Button variant="primary" onClick={() => exportCsv.mutate()} disabled={exportCsv.isPending}>
+            <Button variant="primary" onClick={() => exportCsv.mutate()} disabled={exportCsv.isPending || exportXls.isPending}>
               <Download />
-              {exportCsv.isPending ? 'Generando...' : 'Descargar CSV'}
+              {exportCsv.isPending ? 'Generando...' : 'CSV'}
+            </Button>
+            <Button variant="secondary" onClick={() => exportXls.mutate()} disabled={exportCsv.isPending || exportXls.isPending}>
+              <Download />
+              {exportXls.isPending ? 'Generando...' : 'XLS'}
             </Button>
           </div>
           {lastExport ? (
