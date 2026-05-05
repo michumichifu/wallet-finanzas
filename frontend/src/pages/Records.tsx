@@ -1,12 +1,12 @@
 import { useMemo, useState } from 'react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronLeft, ChevronRight, Plus, Search, Trash2 } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Edit2, Plus, Search, Trash2 } from 'lucide-react'
 import { Api, type RecordListItem } from '@/lib/api'
 import { Button } from '@/components/ui/Button'
 import { Input, Select } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { RecordTypeBadge } from '@/components/RecordTypeBadge'
-import { NewRecordDrawer } from '@/components/NewRecordDrawer'
+import { RecordDrawer } from '@/components/RecordDrawer'
 import { fmtMoneyByCurrency, fmtUsd } from '@/lib/format'
 import { cn } from '@/lib/cn'
 
@@ -15,6 +15,7 @@ type FilterType = '' | 'EXPENSE' | 'INCOME' | 'TRANSFER'
 export function RecordsPage() {
   const qc = useQueryClient()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  const [editing, setEditing] = useState<RecordListItem | null>(null)
   const [page, setPage] = useState(1)
   const [search, setSearch] = useState('')
   const [type, setType] = useState<FilterType>('')
@@ -137,7 +138,14 @@ export function RecordsPage() {
                       </td>
                     </tr>
                   )
-                  : recordsQ.data?.items.map((r) => <RecordRow key={r.id} record={r} onDelete={() => remove.mutate(r.id)} />)
+                  : recordsQ.data?.items.map((r) => (
+                      <RecordRow
+                        key={r.id}
+                        record={r}
+                        onEdit={() => setEditing(r)}
+                        onDelete={() => remove.mutate(r.id)}
+                      />
+                    ))
               }
             </tbody>
           </table>
@@ -162,12 +170,13 @@ export function RecordsPage() {
         </div>
       </Card>
 
-      <NewRecordDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <RecordDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <RecordDrawer open={!!editing} onClose={() => setEditing(null)} record={editing} />
     </div>
   )
 }
 
-function RecordRow({ record, onDelete }: { record: RecordListItem; onDelete: () => void }) {
+function RecordRow({ record, onEdit, onDelete }: { record: RecordListItem; onEdit: () => void; onDelete: () => void }) {
   const isExpense = record.type === 'EXPENSE'
   const isIncome = record.type === 'INCOME'
   const dateLabel = new Date(record.occurredAt).toLocaleDateString('es', {
@@ -207,17 +216,29 @@ function RecordRow({ record, onDelete }: { record: RecordListItem; onDelete: () 
       <td className={cn('whitespace-nowrap px-4 py-2.5 text-right text-sm font-medium tabular', isIncome ? 'text-positive' : isExpense ? 'text-negative' : 'text-fg-muted')}>
         {fmtUsd(record.amountUsd)}
       </td>
-      <td className="px-4 py-2.5 text-right">
-        <button
-          type="button"
-          onClick={() => {
-            if (confirm('¿Borrar este registro? Si es transferencia, borra el par completo.')) onDelete()
-          }}
-          aria-label="Borrar"
-          className="inline-flex size-7 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-negative/10 hover:text-negative"
-        >
-          <Trash2 className="size-3.5" strokeWidth={2} />
-        </button>
+      <td className="whitespace-nowrap px-4 py-2.5 text-right">
+        <div className="inline-flex items-center gap-0.5">
+          {!record.isTransfer && (
+            <button
+              type="button"
+              onClick={onEdit}
+              aria-label="Editar"
+              className="inline-flex size-7 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-bg-muted hover:text-fg"
+            >
+              <Edit2 className="size-3.5" strokeWidth={2} />
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => {
+              if (confirm('¿Borrar este registro? Si es transferencia, borra el par completo.')) onDelete()
+            }}
+            aria-label="Borrar"
+            className="inline-flex size-7 items-center justify-center rounded-md text-fg-subtle transition-colors hover:bg-negative/10 hover:text-negative"
+          >
+            <Trash2 className="size-3.5" strokeWidth={2} />
+          </button>
+        </div>
       </td>
     </tr>
   )

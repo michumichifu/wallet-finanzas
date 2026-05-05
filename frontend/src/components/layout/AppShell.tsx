@@ -4,7 +4,7 @@ import { Plus } from 'lucide-react'
 import { Sidebar } from './Sidebar'
 import { ThemeToggle } from '@/components/ThemeToggle'
 import { Button } from '@/components/ui/Button'
-import { NewRecordDrawer } from '@/components/NewRecordDrawer'
+import { RecordDrawer } from '@/components/RecordDrawer'
 
 export function AppShell() {
   const [drawerOpen, setDrawerOpen] = useState(false)
@@ -23,7 +23,7 @@ export function AppShell() {
           <Outlet />
         </main>
       </div>
-      <NewRecordDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
+      <RecordDrawer open={drawerOpen} onClose={() => setDrawerOpen(false)} />
     </div>
   )
 }

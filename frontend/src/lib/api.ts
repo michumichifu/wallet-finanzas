@@ -1,17 +1,91 @@
-import axios from 'axios'
+import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios'
+import { useAuthStore } from '@/stores/auth.store'
 
 const baseURL = import.meta.env.VITE_API_URL ?? 'http://localhost:4000/api'
-const tenantSlug = import.meta.env.VITE_DEFAULT_TENANT_SLUG ?? 'luis'
 
 export const api = axios.create({
   baseURL,
   timeout: 30000,
-  headers: {
-    'Content-Type': 'application/json',
-    'X-Tenant-Slug': tenantSlug,
-  },
-  withCredentials: true,
+  headers: { 'Content-Type': 'application/json' },
 })
+
+api.interceptors.request.use((cfg) => {
+  const token = useAuthStore.getState().accessToken
+  if (token) {
+    cfg.headers.Authorization = `Bearer ${token}`
+  }
+  return cfg
+})
+
+let refreshing: Promise<string | null> | null = null
+
+api.interceptors.response.use(
+  (r) => r,
+  async (error: AxiosError) => {
+    const original = error.config as InternalAxiosRequestConfig & { _retry?: boolean } | undefined
+    if (!original || error.response?.status !== 401 || original._retry) {
+      return Promise.reject(error)
+    }
+    // Evita loop si la propia request es /auth/refresh.
+    if (original.url?.includes('/auth/refresh') || original.url?.includes('/auth/login')) {
+      useAuthStore.getState().clear()
+      return Promise.reject(error)
+    }
+    original._retry = true
+    if (!refreshing) {
+      refreshing = (async () => {
+        const rt = useAuthStore.getState().refreshToken
+        if (!rt) {
+          useAuthStore.getState().clear()
+          return null
+        }
+        try {
+          const resp = await axios.post(
+            `${baseURL}/auth/refresh`,
+            { refreshToken: rt },
+            { timeout: 10000 },
+          )
+          const data = resp.data as {
+            accessToken: string
+            refreshToken: string
+            user: AuthUserDto
+            defaultTenant: { id: string; slug: string; name: string }
+          }
+          useAuthStore.getState().setSession({
+            accessToken: data.accessToken,
+            refreshToken: data.refreshToken,
+            user: data.user,
+            tenant: data.defaultTenant,
+          })
+          return data.accessToken
+        } catch {
+          useAuthStore.getState().clear()
+          return null
+        } finally {
+          refreshing = null
+        }
+      })()
+    }
+    const newToken = await refreshing
+    if (!newToken) return Promise.reject(error)
+    if (original.headers) original.headers.Authorization = `Bearer ${newToken}`
+    return api.request(original)
+  },
+)
+
+interface AuthUserDto {
+  id: string
+  email: string
+  displayName: string | null
+  role: 'SUPERADMIN' | 'TENANT_OWNER' | 'TENANT_MEMBER'
+}
+
+export interface AuthResponse {
+  accessToken: string
+  refreshToken: string
+  user: AuthUserDto
+  defaultTenant: { id: string; slug: string; name: string } | null
+}
 
 export interface AccountListItem {
   id: string
@@ -84,8 +158,7 @@ export interface CreateRecordPayload {
   categoryId?: string
   amount: number
   currencyCode: string
-  paymentType?: 'CASH' | 'DEBIT_CARD' | 'CREDIT_CARD' | 'TRANSFER' | 'VOUCHER' | 'MOBILE_PAYMENT' | 'CRYPTO' | 'WEB_PAYMENT' | 'OTHER'
-  paymentTypeLabel?: string
+  paymentType?: string
   payee?: string
   note?: string
   occurredAt: string
@@ -102,6 +175,16 @@ export interface CreateTransferPayload {
 
 export const Api = {
   health: () => api.get<{ status: string; db: string; uptime: number }>('/health').then((r) => r.data),
+
+  // Auth
+  login: (email: string, password: string) =>
+    api.post<AuthResponse>('/auth/login', { email, password }).then((r) => r.data),
+  register: (payload: { email: string; password: string; displayName?: string; tenantSlug?: string }) =>
+    api.post<AuthResponse>('/auth/register', payload).then((r) => r.data),
+  me: () =>
+    api.get<{ user: AuthUserDto; tenant: { id: string; slug: string; name: string }; tenants: { id: string; slug: string; name: string }[] }>('/auth/me').then((r) => r.data),
+
+  // Accounts
   listAccounts: () => api.get<AccountListItem[]>('/accounts').then((r) => r.data),
   createAccount: (payload: { name: string; currencyCode: string; type?: string; initialBalance?: number }) =>
     api.post<AccountListItem>('/accounts', payload).then((r) => r.data),
@@ -110,13 +193,17 @@ export const Api = {
   fixAccountCurrency: (id: string, currencyCode: string) =>
     api.patch<{ updatedRecords: number }>(`/accounts/${id}/fix-currency`, { currencyCode }).then((r) => r.data),
   archiveAccount: (id: string) => api.delete(`/accounts/${id}`).then((r) => r.data),
+
+  // Categories
   listCategoryTree: () => api.get<CategoryNode[]>('/categories/tree').then((r) => r.data),
+
+  // Dashboard
   dashboardSummary: (from: string, to: string) =>
     api.get<DashboardSummary>('/dashboard/summary', { params: { from, to } }).then((r) => r.data),
   dashboardByCategory: (from: string, to: string, type: 'EXPENSE' | 'INCOME' = 'EXPENSE') =>
-    api
-      .get<CategoryBreakdownItem[]>('/dashboard/by-category', { params: { from, to, type } })
-      .then((r) => r.data),
+    api.get<CategoryBreakdownItem[]>('/dashboard/by-category', { params: { from, to, type } }).then((r) => r.data),
+
+  // Records
   listRecords: (params: {
     from?: string
     to?: string
@@ -127,9 +214,8 @@ export const Api = {
     type?: string
     search?: string
   }) =>
-    api
-      .get<{ items: RecordListItem[]; total: number; page: number; pageSize: number }>('/records', { params })
-      .then((r) => r.data),
+    api.get<{ items: RecordListItem[]; total: number; page: number; pageSize: number }>('/records', { params }).then((r) => r.data),
+  getRecord: (id: string) => api.get<RecordListItem>(`/records/${id}`).then((r) => r.data),
   createRecord: (payload: CreateRecordPayload) => api.post<RecordListItem>('/records', payload).then((r) => r.data),
   createTransfer: (payload: CreateTransferPayload) =>
     api.post<{ transferPairId: string }>('/records/transfer', payload).then((r) => r.data),

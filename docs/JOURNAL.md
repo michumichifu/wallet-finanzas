@@ -264,3 +264,52 @@ Esto dejará 2,217 records importados, ~14 cuentas creadas, ~155 tasas P2P infer
 - Auth real (JWT) — ya están las tablas User, Tenant, TenantMembership listas.
 - Login UI + register UI + super admin panel.
 - Categorías favoritas / templates rápidos para el flow de "anotar gasto en 3 segundos".
+
+---
+
+## 2026-05-05 — Sesión 4: Auth real JWT + Edit drawer
+
+**Backend — auth completo**:
+- Module `auth/` con `AuthService`, `AuthController`, `JwtStrategy`, `JwtAuthGuard`, `Public()` decorator.
+- Endpoints:
+  - `POST /api/auth/register` — crea User + Tenant (slug derivado del email) + Membership + siembra catálogos (currencies, categorías Wallet) + emite tokens.
+  - `POST /api/auth/login` — valida bcrypt + emite tokens. Resuelve tenant default (owned para SUPERADMIN, primer membership para resto).
+  - `POST /api/auth/refresh` — refresh con refreshToken (verifica `type === 'refresh'`).
+  - `GET /api/auth/me` — user + tenant actual + lista de tenants accesibles.
+- Tokens JWT: access 15m + refresh 30d, secrets distintos (`JWT_SECRET` y `JWT_REFRESH_SECRET`). Payload: sub, email, role, tenantId, tenantSlug, type.
+- bcrypt hash 10 rounds para passwords.
+- `JwtAuthGuard` registrado como `APP_GUARD` global → todos los endpoints requieren auth excepto los marcados `@Public()`.
+- TenantContextMiddleware eliminado (ya no se necesita: el `tenantId` viaja en el JWT). El decorator `@Tenant()` ahora lee primero de `request.user.tenantId`.
+- `HealthController` marcado `@Public()`.
+
+**Frontend — auth flow**:
+- `auth.store.ts` (Zustand persist en `wallet:auth`) con accessToken, refreshToken, user, tenant.
+- `LoginPage` y `RegisterPage` con cards centradas, formato consistente con design system, errores extraídos del backend (string o array de class-validator).
+- `ProtectedRoute` wrapper que redirecciona a `/login` con `state.from` para volver post-login.
+- Axios interceptor:
+  - Request: añade `Authorization: Bearer <accessToken>` automáticamente.
+  - Response 401: dispara refresh con `refreshToken` y reintenta la request original. Si falla, `clear()` del store. Single-flight pattern (variable `refreshing` evita refreshes concurrentes).
+- Sidebar muestra avatar (inicial del email), display name, role, botón logout.
+- Login con cuenta demo: `luisitoys@gmail.com` / `change-me-on-first-login` (hash creado durante import del CSV en sesión 1.5).
+
+**Frontend — RecordDrawer unificado**:
+- `RecordDrawer` reemplaza `NewRecordDrawer`. Acepta `record?: RecordListItem | null`.
+- Si `record` presente → modo edición: prefilla campos, oculta el segmented control de tipo (no se cambia tipo en edit), llama PATCH.
+- Si `record === null` → modo creación con segmented Gasto/Ingreso/Transferencia.
+- Botón Edit en cada fila de Records (oculto si `isTransfer` — backend no permite editar transfers, solo borrar y recrear).
+- Al guardar invalida queries: records, accounts, dashboard-summary, dashboard-by-category.
+
+**Endpoint smoke test**:
+- `/api/health` público OK.
+- `/api/accounts` sin Bearer → 401.
+- `/api/auth/login` retorna tokens válidos.
+- `/api/accounts` con Bearer → 14 cuentas correctamente.
+- `/api/auth/me` retorna profile con tenant y memberships.
+
+**Pendiente sesión 5**:
+- Página Categorías con CRUD + reordenamiento (drag-and-drop opcional).
+- Página Transferencias dedicada con vista de pares.
+- Cambiar tenant activo (selector si user pertenece a múltiples).
+- Templates / plantillas de gasto rápido (anotar en 3 segundos).
+- Reglas automáticas (auto-categorizar por payee/note).
+- Super admin panel (vista global de tenants, métricas).

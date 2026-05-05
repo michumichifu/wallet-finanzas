@@ -1,4 +1,5 @@
-import { MiddlewareConsumer, Module, NestModule } from '@nestjs/common'
+import { Module } from '@nestjs/common'
+import { APP_GUARD } from '@nestjs/core'
 import { ConfigModule } from '@nestjs/config'
 import { PrismaModule } from './prisma/prisma.module'
 import { CatalogModule } from './catalog/catalog.module'
@@ -8,8 +9,9 @@ import { AccountsModule } from './accounts/accounts.module'
 import { CategoriesModule } from './categories/categories.module'
 import { RecordsModule } from './records/records.module'
 import { DashboardModule } from './dashboard/dashboard.module'
+import { AuthModule } from './auth/auth.module'
+import { JwtAuthGuard } from './auth/jwt-auth.guard'
 import { HealthController } from './health/health.controller'
-import { TenantContextMiddleware } from './tenant/tenant-context.middleware'
 import { validateEnv } from './config/env.validation'
 
 @Module({
@@ -23,19 +25,19 @@ import { validateEnv } from './config/env.validation'
     ExchangeModule,
     CatalogModule,
     ImportModule,
+    AuthModule,
     AccountsModule,
     CategoriesModule,
     RecordsModule,
     DashboardModule,
   ],
   controllers: [HealthController],
+  providers: [
+    // Guard global: TODOS los endpoints requieren JWT salvo @Public().
+    {
+      provide: APP_GUARD,
+      useClass: JwtAuthGuard,
+    },
+  ],
 })
-export class AppModule implements NestModule {
-  configure(consumer: MiddlewareConsumer): void {
-    // Aplica resolución de tenant a todas las rutas excepto /health.
-    consumer
-      .apply(TenantContextMiddleware)
-      .exclude({ path: 'health', method: 0 /* RequestMethod.GET */ })
-      .forRoutes('*path')
-  }
-}
+export class AppModule {}
