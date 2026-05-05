@@ -202,3 +202,65 @@ Esto dejará 2,217 records importados, ~14 cuentas creadas, ~155 tasas P2P infer
 - Cuenta `Banco ACAP Pesos` quedó con `currencyCode=USD` por error en CSV original → sale con balance $423 cuando debería ser ~$2.37 (142 DOP / 60). Fix script o corrección desde UI cuando exista CRUD.
 
 **Próximo paso (sesión 3)**: páginas completas — Records con filtros y paginación, Cuentas con detalle y CRUD, Transferencias dedicada, formulario de registro nuevo. Después auth real.
+
+---
+
+## 2026-05-05 — Sesión 3: CRUD + páginas Records/Accounts
+
+**Backend — endpoints CRUD añadidos**:
+- `POST /api/records` — crear gasto/ingreso. Validación de tenant ownership de cuenta y categoría. Forzado de signo (EXPENSE→negativo, INCOME→positivo). Bloquea TRANSFER aquí.
+- `POST /api/records/transfer` — crear transferencia. Crea TransferPair + dos records vinculados. Calcula `appliedRate` desde `toAmount/fromAmount`.
+- `PATCH /api/records/:id` — editar record. Bloquea editar transferencias (recomienda borrar y recrear).
+- `DELETE /api/records/:id` — borrar. Si es leg de transferencia, borra el par completo + el TransferPair en una transacción.
+- `POST /api/accounts` — crear cuenta. Valida currency en catálogo, unique por (tenant, name).
+- `PATCH /api/accounts/:id` — editar (nombre, type, color, etc.).
+- `PATCH /api/accounts/:id/fix-currency` — endpoint especial: cambia moneda de cuenta + propaga el cambio a TODOS los records existentes en una transacción. Usado para arreglar imports erróneos.
+- `DELETE /api/accounts/:id` — soft delete (archiva).
+
+**Bug ACAP arreglado en producción de tu DB**: `Banco ACAP Pesos` pasó de USD a DOP. 14 records actualizados. Saldo ahora muestra correcto: 423.15 DOP = $6.66 USD (antes mostraba absurdamente $423 USD).
+
+**DTOs con class-validator**:
+- CreateRecordDto: amount obligatorio, currencyCode con MaxLength, occurredAt como ISO string, note y payee opcionales con MaxLength.
+- CreateTransferDto: fromAmount/toAmount positivos, fromAccountId ≠ toAccountId.
+- CreateAccountDto / UpdateAccountDto con `@nestjs/mapped-types::PartialType`.
+
+**Frontend — componentes UI nuevos**:
+- `Button` (primary/secondary/ghost/destructive, sm/md/lg) con focus rings y disabled.
+- `Input` / `Textarea` / `Select` / `FieldLabel` con tabular-nums donde aplica.
+- `Drawer` lateral con escape-to-close + click outside + scroll-lock body.
+- `RecordTypeBadge` con icono + color coherente (positive/negative/neutral).
+
+**Frontend — páginas funcionales**:
+- **Página Registros** (`/registros`):
+  - Tabla con columnas Fecha, Tipo, Cuenta, Categoría, Nota, Monto nativo, USD equivalente, acciones.
+  - Filtros: search por nota/payee, type (gasto/ingreso/transferencia), cuenta.
+  - Paginación 50/página, controles previous/next, contador "mostrando X-Y de Z".
+  - Skeletons en loading. Vacío state con mensaje.
+  - Botón delete por fila con confirm. Para transferencias borra el par.
+- **Página Cuentas** (`/cuentas`):
+  - Lista con icono según tipo (CRYPTO/CASH/GENERAL), saldo nativo + USD.
+  - Botón "Nueva cuenta" → drawer.
+  - Click en lápiz → drawer de edición con campo especial "fix-currency" cuando cambias moneda (checkbox que decide si propagar a registros existentes).
+  - Total en USD calculado client-side (excluye archivadas y excludeFromTotals).
+
+**Frontend — botón global "Nuevo registro"**:
+- En el header del AppShell (siempre visible).
+- Abre `NewRecordDrawer` con segmented control 3-estados (Gasto / Ingreso / Transferencia).
+- Cuenta + categoría según tipo. Para transferencias: dos cuentas + monto destino independiente si las monedas difieren (input adicional aparece automáticamente).
+- Validación client-side (cuenta requerida, monto > 0, origen ≠ destino).
+- Invalida queries relevantes al guardar (records, accounts, dashboard-summary, dashboard-by-category).
+- Manejo de errores del backend (extrae `response.data.message`, soporta string o array).
+
+**Smoke test end-to-end ejecutado**:
+- POST gasto VEF -1500 → OK (signo aplicado automático).
+- DELETE single → OK.
+- POST transferencia USDT 50 → 31579 Bs → OK (transferPairId retornado).
+- DELETE transferencia → borra par completo (deleted: 2).
+
+**Pendiente sesión 4**:
+- Página Categorías con CRUD + reordenamiento.
+- Página Transferencias dedicada (filtra el árbol de records con isTransfer=true y agrupa por par).
+- Edit drawer del Record (no solo create) — actualmente borrar+crear es el workflow.
+- Auth real (JWT) — ya están las tablas User, Tenant, TenantMembership listas.
+- Login UI + register UI + super admin panel.
+- Categorías favoritas / templates rápidos para el flow de "anotar gasto en 3 segundos".

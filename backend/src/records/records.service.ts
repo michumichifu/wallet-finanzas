@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common'
-import { Prisma, RecordType } from '@prisma/client'
+import { BadRequestException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common'
+import { Prisma, RateSource, RecordType } from '@prisma/client'
 import { PrismaService } from '@/prisma/prisma.service'
 import { ExchangeService } from '@/exchange/exchange.service'
+import { CreateRecordDto } from './dto/create-record.dto'
+import { UpdateRecordDto } from './dto/update-record.dto'
+import { CreateTransferDto } from './dto/create-transfer.dto'
 
 export interface RecordListQuery {
   from?: Date
@@ -102,5 +105,194 @@ export class RecordsService {
     )
 
     return { items, total, page, pageSize }
+  }
+
+  async getOne(tenantId: string, id: string) {
+    const r = await this.prisma.record.findFirst({
+      where: { id, tenantId },
+      include: {
+        account: { select: { id: true, name: true, currencyCode: true } },
+        category: { select: { id: true, name: true, slug: true } },
+      },
+    })
+    if (!r) throw new NotFoundException(`Record ${id} no encontrado`)
+    const amountUsd = await this.exchange.toUsd(r.amount, r.currencyCode, r.occurredAt)
+    return {
+      ...r,
+      amount: r.amount.toFixed(8).replace(/\.?0+$/, ''),
+      amountUsd: amountUsd === null ? null : Number(amountUsd.toFixed(2)),
+      occurredAt: r.occurredAt.toISOString(),
+    }
+  }
+
+  async create(tenantId: string, dto: CreateRecordDto) {
+    if (dto.type === RecordType.TRANSFER) {
+      throw new BadRequestException('Para transferencias usa POST /api/records/transfer')
+    }
+    // Validar cuenta del tenant + match de moneda.
+    const account = await this.prisma.account.findFirst({ where: { id: dto.accountId, tenantId } })
+    if (!account) throw new ForbiddenException('Cuenta no pertenece al tenant')
+    if (dto.currencyCode !== account.currencyCode) {
+      // Permitido pero advertencia: el monto debería estar en moneda de la cuenta.
+      // Para mantener consistencia con Wallet, forzamos coincidencia.
+      throw new BadRequestException(
+        `currencyCode (${dto.currencyCode}) debe coincidir con la moneda de la cuenta (${account.currencyCode})`,
+      )
+    }
+    if (dto.categoryId) {
+      const cat = await this.prisma.category.findFirst({ where: { id: dto.categoryId, tenantId } })
+      if (!cat) throw new ForbiddenException('Categoría no pertenece al tenant')
+    }
+
+    // Asegurar signo: EXPENSE negativo, INCOME positivo.
+    let amount = dto.amount
+    if (dto.type === RecordType.EXPENSE && amount > 0) amount = -amount
+    if (dto.type === RecordType.INCOME && amount < 0) amount = -amount
+
+    return this.prisma.record.create({
+      data: {
+        tenantId,
+        accountId: dto.accountId,
+        categoryId: dto.categoryId ?? null,
+        type: dto.type,
+        amount: new Prisma.Decimal(amount),
+        currencyCode: dto.currencyCode,
+        paymentType: dto.paymentType ?? 'CASH',
+        paymentTypeLabel: dto.paymentTypeLabel ?? null,
+        payee: dto.payee ?? null,
+        note: dto.note ?? null,
+        occurredAt: new Date(dto.occurredAt),
+        isDraft: dto.isDraft ?? false,
+        isTransfer: false,
+      },
+    })
+  }
+
+  async update(tenantId: string, id: string, dto: UpdateRecordDto) {
+    const existing = await this.prisma.record.findFirst({ where: { id, tenantId } })
+    if (!existing) throw new NotFoundException(`Record ${id} no encontrado`)
+    if (existing.isTransfer) {
+      throw new BadRequestException('No se pueden editar transferencias directamente. Borrar y recrear.')
+    }
+
+    const data: Prisma.RecordUpdateInput = {}
+    if (dto.accountId) {
+      const account = await this.prisma.account.findFirst({ where: { id: dto.accountId, tenantId } })
+      if (!account) throw new ForbiddenException('Cuenta no pertenece al tenant')
+      data.account = { connect: { id: dto.accountId } }
+    }
+    if (dto.categoryId !== undefined) {
+      if (dto.categoryId === null) {
+        data.category = { disconnect: true }
+      } else {
+        const cat = await this.prisma.category.findFirst({ where: { id: dto.categoryId, tenantId } })
+        if (!cat) throw new ForbiddenException('Categoría no pertenece al tenant')
+        data.category = { connect: { id: dto.categoryId } }
+      }
+    }
+    if (dto.type) data.type = dto.type
+    if (dto.amount !== undefined) {
+      let amount = dto.amount
+      const finalType = dto.type ?? existing.type
+      if (finalType === RecordType.EXPENSE && amount > 0) amount = -amount
+      if (finalType === RecordType.INCOME && amount < 0) amount = -amount
+      data.amount = new Prisma.Decimal(amount)
+    }
+    if (dto.currencyCode) data.currency = { connect: { code: dto.currencyCode } }
+    if (dto.paymentType) data.paymentType = dto.paymentType
+    if (dto.paymentTypeLabel !== undefined) data.paymentTypeLabel = dto.paymentTypeLabel
+    if (dto.payee !== undefined) data.payee = dto.payee
+    if (dto.note !== undefined) data.note = dto.note
+    if (dto.occurredAt) data.occurredAt = new Date(dto.occurredAt)
+    if (dto.isDraft !== undefined) data.isDraft = dto.isDraft
+
+    return this.prisma.record.update({ where: { id }, data })
+  }
+
+  async remove(tenantId: string, id: string): Promise<{ deleted: number }> {
+    const existing = await this.prisma.record.findFirst({ where: { id, tenantId } })
+    if (!existing) throw new NotFoundException(`Record ${id} no encontrado`)
+
+    if (existing.isTransfer && existing.transferPairId) {
+      // Borra el par completo + el TransferPair.
+      await this.prisma.$transaction([
+        this.prisma.record.deleteMany({
+          where: { tenantId, transferPairId: existing.transferPairId },
+        }),
+        this.prisma.transferPair.delete({ where: { id: existing.transferPairId } }),
+      ])
+      return { deleted: 2 }
+    }
+
+    await this.prisma.record.delete({ where: { id } })
+    return { deleted: 1 }
+  }
+
+  async createTransfer(tenantId: string, dto: CreateTransferDto): Promise<{ transferPairId: string }> {
+    if (dto.fromAccountId === dto.toAccountId) {
+      throw new BadRequestException('Las cuentas origen y destino deben ser diferentes')
+    }
+    if (dto.fromAmount <= 0 || dto.toAmount <= 0) {
+      throw new BadRequestException('Los montos deben ser positivos (representan transferencia)')
+    }
+
+    const [from, to] = await Promise.all([
+      this.prisma.account.findFirst({ where: { id: dto.fromAccountId, tenantId } }),
+      this.prisma.account.findFirst({ where: { id: dto.toAccountId, tenantId } }),
+    ])
+    if (!from || !to) throw new ForbiddenException('Una de las cuentas no pertenece al tenant')
+
+    // Categoría sintética TRANSFER.
+    const transferCat = await this.prisma.category.findFirst({
+      where: { tenantId, slug: 'transfer' },
+    })
+
+    const occurred = new Date(dto.occurredAt)
+    const sameCurrency = from.currencyCode === to.currencyCode
+    const appliedRate = sameCurrency ? new Prisma.Decimal(1) : new Prisma.Decimal((dto.toAmount / dto.fromAmount).toFixed(12))
+    const rateSource: RateSource = sameCurrency ? RateSource.MANUAL : RateSource.MANUAL
+
+    const pair = await this.prisma.transferPair.create({
+      data: {
+        tenantId,
+        appliedRate,
+        rateSource,
+        notes: dto.note ?? null,
+        occurredAt: occurred,
+      },
+    })
+
+    await this.prisma.record.createMany({
+      data: [
+        {
+          tenantId,
+          accountId: from.id,
+          categoryId: transferCat?.id ?? null,
+          type: RecordType.TRANSFER,
+          amount: new Prisma.Decimal(-dto.fromAmount),
+          currencyCode: from.currencyCode,
+          paymentType: 'CASH',
+          note: dto.note ?? null,
+          occurredAt: occurred,
+          isTransfer: true,
+          transferPairId: pair.id,
+        },
+        {
+          tenantId,
+          accountId: to.id,
+          categoryId: transferCat?.id ?? null,
+          type: RecordType.TRANSFER,
+          amount: new Prisma.Decimal(dto.toAmount),
+          currencyCode: to.currencyCode,
+          paymentType: 'CASH',
+          note: dto.note ?? null,
+          occurredAt: occurred,
+          isTransfer: true,
+          transferPairId: pair.id,
+        },
+      ],
+    })
+
+    return { transferPairId: pair.id }
   }
 }

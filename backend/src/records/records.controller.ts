@@ -1,7 +1,10 @@
-import { Controller, Get, Query } from '@nestjs/common'
+import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import { RecordType } from '@prisma/client'
 import { Tenant } from '@/tenant/tenant.decorator'
 import { RecordsService } from './records.service'
+import { CreateRecordDto } from './dto/create-record.dto'
+import { UpdateRecordDto } from './dto/update-record.dto'
+import { CreateTransferDto } from './dto/create-transfer.dto'
 
 @Controller('records')
 export class RecordsController {
@@ -31,5 +34,34 @@ export class RecordsController {
       page: page ? Number(page) : undefined,
       pageSize: pageSize ? Number(pageSize) : undefined,
     })
+  }
+
+  @Get(':id')
+  getOne(@Tenant() tenantId: string, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.records.getOne(tenantId, id)
+  }
+
+  @Post()
+  create(@Tenant() tenantId: string, @Body() dto: CreateRecordDto) {
+    return this.records.create(tenantId, dto)
+  }
+
+  @Post('transfer')
+  createTransfer(@Tenant() tenantId: string, @Body() dto: CreateTransferDto) {
+    return this.records.createTransfer(tenantId, dto)
+  }
+
+  @Patch(':id')
+  update(
+    @Tenant() tenantId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Body() dto: UpdateRecordDto,
+  ) {
+    return this.records.update(tenantId, id, dto)
+  }
+
+  @Delete(':id')
+  remove(@Tenant() tenantId: string, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.records.remove(tenantId, id)
   }
 }
