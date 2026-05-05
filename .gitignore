@@ -1,0 +1,69 @@
+# Node
+node_modules/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+.pnp.*
+
+# Builds
+dist/
+build/
+out/
+*.tsbuildinfo
+.next/
+.turbo/
+.vite/
+
+# Env
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+.env.*.local
+
+# Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Testing
+coverage/
+.nyc_output/
+
+# Prisma
+prisma/migrations/dev.db
+*.sqlite
+*.sqlite-journal
+
+# OS
+.cache/
+.parcel-cache/
+
+# Datos sensibles del usuario (nunca commitear)
+data/
+uploads/
+storage/
+*.csv
+*.xls
+*.xlsx
+!docs/**/*.csv
+!docs/**/*.xls
+
+# Docker volúmenes locales
+docker/data/
+docker/postgres-data/
+docker/minio-data/
+
+# Generated
+*.gen.ts
+schema.gql
