@@ -21,7 +21,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
-    "import:wallet": "tsx -r tsconfig-paths/register scripts/import-wallet-csv.ts"
+    "import:wallet": "ts-node --transpile-only -r tsconfig-paths/register scripts/import-wallet-csv.ts"
   },
   "dependencies": {
     "@nestjs/common": "^11.0.1",

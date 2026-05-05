@@ -1,12 +1,13 @@
 /* eslint-disable no-console */
+import 'reflect-metadata'
 import { NestFactory } from '@nestjs/core'
 import { readFileSync, existsSync } from 'node:fs'
 import { resolve } from 'node:path'
 import * as bcrypt from 'bcrypt'
-import { AppModule } from '../src/app.module'
-import { PrismaService } from '../src/prisma/prisma.service'
-import { WalletCsvImportService } from '../src/import/wallet-csv.service'
-import { CatalogService } from '../src/catalog/catalog.service'
+import { AppModule } from '@/app.module'
+import { PrismaService } from '@/prisma/prisma.service'
+import { WalletCsvImportService } from '@/import/wallet-csv.service'
+import { CatalogService } from '@/catalog/catalog.service'
 
 /**
  * Script standalone para importar el CSV de Wallet by BudgetBakers.
