@@ -1,42 +1,39 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowDownRight, ArrowUpRight, Bitcoin, Coins, DollarSign, Wallet, Banknote } from 'lucide-react'
 import { Api, type AccountListItem, type CategoryBreakdownItem } from '@/lib/api'
 import { fmtCount, fmtMoneyByCurrency, fmtPercentDelta, fmtUsd } from '@/lib/format'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
+import { DateRangePicker, computeRange, type DateRange } from '@/components/DateRangePicker'
 import { cn } from '@/lib/cn'
 
-function getMonthRange(): { from: string; to: string; label: string } {
-  const now = new Date()
-  const from = new Date(now.getFullYear(), now.getMonth(), 1)
-  const to = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59)
-  const label = from.toLocaleDateString('es', { month: 'long', year: 'numeric' })
-  return { from: from.toISOString(), to: to.toISOString(), label }
-}
-
 export function DashboardPage() {
-  const { from, to, label } = useMemo(() => getMonthRange(), [])
+  const [range, setRange] = useState<DateRange>(() => computeRange('this-month'))
+
+  const fromIso = useMemo(() => range.from.toISOString(), [range.from])
+  const toIso = useMemo(() => range.to.toISOString(), [range.to])
 
   const accountsQ = useQuery({ queryKey: ['accounts'], queryFn: Api.listAccounts })
   const summaryQ = useQuery({
-    queryKey: ['dashboard-summary', from, to],
-    queryFn: () => Api.dashboardSummary(from, to),
+    queryKey: ['dashboard-summary', fromIso, toIso],
+    queryFn: () => Api.dashboardSummary(fromIso, toIso),
   })
   const breakdownQ = useQuery({
-    queryKey: ['dashboard-by-category', from, to],
-    queryFn: () => Api.dashboardByCategory(from, to, 'EXPENSE'),
+    queryKey: ['dashboard-by-category', fromIso, toIso],
+    queryFn: () => Api.dashboardByCategory(fromIso, toIso, 'EXPENSE'),
   })
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-6 p-4 md:p-6">
-      <header className="flex items-end justify-between gap-4">
+      <header className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-fg md:text-2xl">Dashboard</h1>
           <p className="mt-0.5 text-sm text-fg-muted">
-            Resumen del periodo: <span className="capitalize text-fg">{label}</span>
+            Periodo: <span className="capitalize text-fg">{range.label}</span>
             <span className="ml-1 text-fg-subtle">· conversiones a USD con tasa P2P real</span>
           </p>
         </div>
+        <DateRangePicker value={range} onChange={setRange} />
       </header>
 
       <KpiRow summary={summaryQ.data} loading={summaryQ.isLoading} />
@@ -154,8 +151,10 @@ function KpiCard({
 
 function AccountsCard({ accounts, loading }: { accounts: AccountListItem[]; loading: boolean }) {
   const totalUsd = accounts
-    .filter((a) => !a.excludeFromTotals)
+    .filter((a) => !a.excludeFromTotals && !a.isArchived)
     .reduce((sum, a) => sum + (a.balanceUsd ?? 0), 0)
+
+  const visible = accounts.filter((a) => !a.isArchived)
 
   return (
     <Card>
@@ -166,12 +165,12 @@ function AccountsCard({ accounts, loading }: { accounts: AccountListItem[]; load
       <CardBody className="p-0">
         <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
           <div className="divide-y divide-border">
-            {(loading ? Array.from({ length: 7 }) : accounts.slice(0, Math.ceil(accounts.length / 2))).map(
+            {(loading ? Array.from({ length: 7 }) : visible.slice(0, Math.ceil(visible.length / 2))).map(
               (a, i) => (loading ? <AccountRowSkeleton key={i} /> : a ? <AccountRow key={(a as AccountListItem).id} account={a as AccountListItem} /> : null),
             )}
           </div>
           <div className="divide-y divide-border">
-            {(loading ? Array.from({ length: 7 }) : accounts.slice(Math.ceil(accounts.length / 2))).map(
+            {(loading ? Array.from({ length: 7 }) : visible.slice(Math.ceil(visible.length / 2))).map(
               (a, i) => (loading ? <AccountRowSkeleton key={i} /> : a ? <AccountRow key={(a as AccountListItem).id} account={a as AccountListItem} /> : null),
             )}
           </div>
@@ -224,7 +223,7 @@ function BreakdownCard({ items, loading }: { items: CategoryBreakdownItem[]; loa
   return (
     <Card>
       <CardHeader>
-        <CardTitle hint="Top 8 — gastos del mes">Por categoría</CardTitle>
+        <CardTitle hint="Top 8 — gastos del periodo">Por categoría</CardTitle>
       </CardHeader>
       <CardBody className="space-y-3">
         {loading

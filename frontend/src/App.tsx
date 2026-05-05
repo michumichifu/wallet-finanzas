@@ -1,6 +1,5 @@
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Settings } from 'lucide-react'
 import { AppShell } from '@/components/layout/AppShell'
 import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { DashboardPage } from '@/pages/Dashboard'
@@ -8,9 +7,9 @@ import { RecordsPage } from '@/pages/Records'
 import { AccountsPage } from '@/pages/Accounts'
 import { CategoriesPage } from '@/pages/Categories'
 import { TransfersPage } from '@/pages/Transfers'
+import { SettingsPage } from '@/pages/Settings'
 import { LoginPage } from '@/pages/Login'
 import { RegisterPage } from '@/pages/Register'
-import { PlaceholderPage } from '@/pages/Placeholder'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -39,7 +38,7 @@ export default function App() {
               <Route path="registros" element={<RecordsPage />} />
               <Route path="transferencias" element={<TransfersPage />} />
               <Route path="categorias" element={<CategoriesPage />} />
-              <Route path="ajustes" element={<PlaceholderPage title="Ajustes" icon={Settings} />} />
+              <Route path="ajustes" element={<SettingsPage />} />
             </Route>
           </Route>
         </Routes>

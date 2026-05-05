@@ -7,6 +7,7 @@ import { Input, Select } from '@/components/ui/Input'
 import { Card } from '@/components/ui/Card'
 import { RecordTypeBadge } from '@/components/RecordTypeBadge'
 import { RecordDrawer } from '@/components/RecordDrawer'
+import { DateRangePicker, computeRange, type DateRange } from '@/components/DateRangePicker'
 import { fmtMoneyByCurrency, fmtUsd } from '@/lib/format'
 import { cn } from '@/lib/cn'
 
@@ -20,11 +21,18 @@ export function RecordsPage() {
   const [search, setSearch] = useState('')
   const [type, setType] = useState<FilterType>('')
   const [accountId, setAccountId] = useState('')
+  const [range, setRange] = useState<DateRange>(() => computeRange('all-time'))
   const pageSize = 50
 
   const accountsQ = useQuery({ queryKey: ['accounts'], queryFn: Api.listAccounts })
 
-  const queryKey = useMemo(() => ['records', { page, search, type, accountId, pageSize }], [page, search, type, accountId, pageSize])
+  const fromIso = useMemo(() => range.from.toISOString(), [range.from])
+  const toIso = useMemo(() => range.to.toISOString(), [range.to])
+
+  const queryKey = useMemo(
+    () => ['records', { page, search, type, accountId, fromIso, toIso, pageSize }],
+    [page, search, type, accountId, fromIso, toIso, pageSize],
+  )
   const recordsQ = useQuery({
     queryKey,
     queryFn: () =>
@@ -34,6 +42,8 @@ export function RecordsPage() {
         search: search || undefined,
         type: type || undefined,
         accountId: accountId || undefined,
+        from: fromIso,
+        to: toIso,
       }),
   })
 
@@ -52,17 +62,21 @@ export function RecordsPage() {
 
   return (
     <div className="mx-auto flex max-w-7xl flex-col gap-4 p-4 md:p-6">
-      <header className="flex items-center justify-between gap-4">
+      <header className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-xl font-semibold tracking-tight text-fg md:text-2xl">Registros</h1>
           <p className="mt-0.5 text-sm text-fg-muted">
             {total === 0 ? 'Sin registros' : `${total.toLocaleString('en-US')} registros · página ${page} de ${totalPages}`}
+            <span className="ml-1 text-fg-subtle">· <span className="capitalize">{range.label}</span></span>
           </p>
         </div>
-        <Button variant="primary" onClick={() => setDrawerOpen(true)}>
-          <Plus />
-          Nuevo
-        </Button>
+        <div className="flex items-center gap-2">
+          <DateRangePicker value={range} onChange={(r) => { setRange(r); setPage(1) }} />
+          <Button variant="primary" onClick={() => setDrawerOpen(true)}>
+            <Plus />
+            Nuevo
+          </Button>
+        </div>
       </header>
 
       <Card>

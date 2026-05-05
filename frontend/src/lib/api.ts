@@ -255,6 +255,12 @@ export const Api = {
   listTransfers: (params: { from?: string; to?: string; page?: number; pageSize?: number }) =>
     api.get<{ items: TransferPairView[]; total: number; page: number; pageSize: number }>('/transfers', { params }).then((r) => r.data),
 
+  // Export
+  exportWalletCsv: async (params: { from?: string; to?: string }) => {
+    const r = await api.get<Blob>('/export/wallet-csv', { params, responseType: 'blob' })
+    return r.data as unknown as Blob
+  },
+
   // Templates
   listTemplates: () => api.get<TemplateView[]>('/templates').then((r) => r.data),
   createTemplate: (payload: { name: string; type: 'EXPENSE' | 'INCOME'; accountId: string; categoryId?: string; amount: number; currencyCode: string; payee?: string; note?: string }) =>
