@@ -4,7 +4,32 @@ App multi-tenant de finanzas personales con soporte multi-moneda (fiat + cripto)
 
 ## Estado actual
 
-Pre-alfa. Fase 0 (setup inicial). Ver [docs/ROADMAP.md](docs/ROADMAP.md).
+Pre-alfa. Fase 1 en curso (schema + importer del CSV de Wallet). Ver [docs/ROADMAP.md](docs/ROADMAP.md).
+
+## Quickstart local (cuando exista DB lista)
+
+```bash
+# 1. Crear DB y usuario en Postgres local (una sola vez)
+sudo -u postgres psql -c "CREATE USER wallet WITH PASSWORD 'wallet' CREATEDB;" \
+                     -c "CREATE DATABASE wallet_finanzas OWNER wallet;"
+
+# 2. Backend
+cd backend
+cp .env.example .env
+# Editar .env: MASTER_KEY=$(openssl rand -hex 32), JWT_SECRET y JWT_REFRESH_SECRET con 32+ chars
+npm install
+npx prisma migrate dev --name init
+npm run start:dev  # arranca en :4000
+
+# 3. Frontend (otra terminal)
+cd frontend
+npm install
+npm run dev        # arranca en :3000
+
+# 4. Importar tu historial de Wallet by BudgetBakers
+cd backend
+npm run import:wallet -- /ruta/al/report_2026-05-04_115314.csv
+```
 
 ## Estructura del repo
 

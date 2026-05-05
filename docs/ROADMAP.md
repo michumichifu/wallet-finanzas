@@ -4,8 +4,8 @@
 
 | # | Fase | Estado | Salida |
 |---|------|--------|--------|
-| 0 | Setup + Wallet API docs + repo skeleton | EN CURSO | docs, monorepo, Docker compose, CI base, esquema Prisma inicial |
-| 1 | Schema Prisma + import CSV (2217 records) | pendiente | data del usuario importada |
+| 0 | Setup + Wallet API docs + repo skeleton | COMPLETADO | docs, monorepo, esquema Prisma inicial, design system |
+| 1 | Schema Prisma + import CSV (2217 records) | EN CURSO (90%) | schema completo, importer service y script CLI listos. Pendiente: correr migración + import contra DB real |
 | 2 | Multi-tenant + auth + super admin | pendiente | aislamiento por tenant |
 | 3 | CRUD completo + responsive | pendiente | records, transfers, accounts, categories, labels, plantillas, reglas |
 | 4 | Export Wallet-compatible (CSV/XLS round-trip) | pendiente | data nunca atrapada |

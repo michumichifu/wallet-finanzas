@@ -1,13 +1,531 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-// Get a free hosted Postgres database in seconds: `npx create-db`
+// Wallet: Finanzas personales — schema inicial (fase 1)
+//
+// Modelo construido con dos objetivos en paralelo:
+//   1. Mirror funcional del export CSV de Wallet by BudgetBakers, para que
+//      cualquier export histórico se importe sin pérdida.
+//   2. Extensiones propias: multi-tenant, cripto, recibos con fotos, BYOK
+//      de IA, tasas P2P, batches de importación.
 
 generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
+  provider = "prisma-client-js"
 }
 
 datasource db {
   provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// ===================== AUTH / TENANCY =====================
+
+enum UserRole {
+  SUPERADMIN
+  TENANT_OWNER
+  TENANT_MEMBER
+}
+
+enum TenantStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+model User {
+  id              String   @id @default(uuid())
+  email           String   @unique
+  passwordHash    String
+  displayName     String?
+  avatarUrl       String?
+  role            UserRole @default(TENANT_OWNER)
+  isActive        Boolean  @default(true)
+  emailVerifiedAt DateTime?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  memberships   TenantMembership[]
+  ownedTenants  Tenant[]            @relation("TenantOwner")
+  aiCredentials AiCredential[]
+  apiKeys       ApiKey[]
+
+  @@index([email])
+}
+
+model Tenant {
+  id              String       @id @default(uuid())
+  slug            String       @unique
+  name            String
+  status          TenantStatus @default(ACTIVE)
+  timezone        String       @default("America/Caracas")
+  refCurrencyCode String       @default("USD")
+  ownerId         String
+  createdAt       DateTime     @default(now())
+  updatedAt       DateTime     @updatedAt
+
+  owner          User                @relation("TenantOwner", fields: [ownerId], references: [id])
+  members        TenantMembership[]
+  accounts       Account[]
+  categories     Category[]
+  labels         Label[]
+  records        Record[]
+  transferPairs  TransferPair[]
+  receipts       Receipt[]
+  templates      Template[]
+  automaticRules AutomaticRule[]
+  envelopes      Envelope[]
+  importBatches  ImportBatch[]
+  apiKeys        ApiKey[]
+  aiCredentials  AiCredential[]
+
+  @@index([slug])
+}
+
+model TenantMembership {
+  id       String   @id @default(uuid())
+  userId   String
+  tenantId String
+  role     UserRole @default(TENANT_MEMBER)
+  joinedAt DateTime @default(now())
+
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, tenantId])
+  @@index([tenantId])
+}
+
+// API key emitida por un tenant para consumo programático de su data.
+model ApiKey {
+  id          String    @id @default(uuid())
+  tenantId    String
+  createdById String
+  name        String
+  // Solo se almacena hash; el valor en claro se entrega una sola vez al crear.
+  keyHash     String    @unique
+  // Prefijo visible (8 chars) para que el user identifique la key sin verla.
+  keyPrefix   String
+  scopes      String[]  @default(["read"])
+  lastUsedAt  DateTime?
+  expiresAt   DateTime?
+  revokedAt   DateTime?
+  createdAt   DateTime  @default(now())
+
+  tenant    Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  createdBy User   @relation(fields: [createdById], references: [id])
+
+  @@index([tenantId])
+  @@index([keyPrefix])
+}
+
+enum AiProvider {
+  ANTHROPIC
+  OPENAI
+  GOOGLE
+  OPENROUTER
+}
+
+// BYOK: cada user agrega su propia API key de IA. Cifrada AES-256-GCM con MASTER_KEY del servidor.
+model AiCredential {
+  id              String     @id @default(uuid())
+  tenantId        String
+  userId          String
+  provider        AiProvider
+  label           String
+  // Cifrado AES-256-GCM con env MASTER_KEY. Nunca debe loguearse en claro.
+  encryptedKey    String
+  encryptedKeyIv  String
+  encryptedKeyTag String
+  defaultModel    String?
+  isActive        Boolean    @default(true)
+  createdAt       DateTime   @default(now())
+  updatedAt       DateTime   @updatedAt
+
+  tenant Tenant @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  user   User   @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId])
+}
+
+// ===================== CATÁLOGOS GLOBALES =====================
+
+enum CurrencyKind {
+  FIAT
+  CRYPTO
+}
+
+// Catálogo global de monedas. Compartido entre tenants. Code es la PK natural.
+model Currency {
+  code           String       @id
+  kind           CurrencyKind
+  name           String
+  symbol         String?
+  decimals       Int          @default(2)
+  iconKey        String?
+  cryptoNetwork  String?
+  cryptoContract String?
+  isActive       Boolean      @default(true)
+  createdAt      DateTime     @default(now())
+
+  accounts      Account[]
+  recordsAmount Record[]       @relation("RecordCurrency")
+  ratesFrom     ExchangeRate[] @relation("RateFromCurrency")
+  ratesTo       ExchangeRate[] @relation("RateToCurrency")
+}
+
+enum RateSource {
+  MANUAL
+  BINANCE_P2P
+  COINGECKO
+  COINMARKETCAP
+  IMPORTED
+  INFERRED_FROM_TRANSFER
+  BCV
+}
+
+// Snapshot de tasa de cambio. Cada record opcionalmente referencia el snapshot usado.
+model ExchangeRate {
+  id         String     @id @default(uuid())
+  fromCode   String
+  toCode     String
+  // rate := cuántas unidades de TO equivalen a 1 unidad de FROM.
+  rate       Decimal    @db.Decimal(28, 12)
+  source     RateSource
+  sourceMeta Json?
+  observedAt DateTime
+  createdAt  DateTime   @default(now())
+
+  fromCurrency Currency @relation("RateFromCurrency", fields: [fromCode], references: [code])
+  toCurrency   Currency @relation("RateToCurrency", fields: [toCode], references: [code])
+  records      Record[]
+
+  @@index([fromCode, toCode, observedAt])
+  @@index([source, observedAt])
+}
+
+// ===================== CUENTAS / CATEGORÍAS / LABELS =====================
+
+enum AccountType {
+  GENERAL
+  CASH
+  SAVINGS
+  CREDIT_CARD
+  INVESTMENT
+  CRYPTO
+  LOAN
+  OTHER
+}
+
+model Account {
+  id                String      @id @default(uuid())
+  tenantId          String
+  name              String
+  currencyCode      String
+  type              AccountType @default(GENERAL)
+  color             String?
+  iconKey           String?
+  initialBalance    Decimal     @db.Decimal(28, 8) @default(0)
+  cryptoAddress     String?
+  excludeFromTotals Boolean     @default(false)
+  isArchived        Boolean     @default(false)
+  position          Int         @default(0)
+  createdAt         DateTime    @default(now())
+  updatedAt         DateTime    @updatedAt
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  currency Currency @relation(fields: [currencyCode], references: [code])
+  records  Record[]
+
+  @@unique([tenantId, name])
+  @@index([tenantId, isArchived])
+}
+
+enum CategoryKind {
+  EXPENSE
+  INCOME
+  BOTH
+  TRANSFER
+  SYSTEM
+}
+
+// Categoría jerárquica. Wallet usa 2 niveles; permitimos N por flexibilidad.
+model Category {
+  id               String       @id @default(uuid())
+  tenantId         String
+  slug             String
+  name             String
+  color            String?
+  iconKey          String?
+  kind             CategoryKind @default(EXPENSE)
+  parentId         String?
+  walletEnvelopeId String?
+  isSystem         Boolean      @default(false)
+  isArchived       Boolean      @default(false)
+  position         Int          @default(0)
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  tenant    Tenant          @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  parent    Category?       @relation("CategoryTree", fields: [parentId], references: [id])
+  children  Category[]      @relation("CategoryTree")
+  records   Record[]
+  templates Template[]
+  rules     AutomaticRule[]
+  envelopes Envelope[]
+
+  @@unique([tenantId, slug])
+  @@index([tenantId, parentId])
+}
+
+model Label {
+  id         String   @id @default(uuid())
+  tenantId   String
+  slug       String
+  name       String
+  color      String?
+  isArchived Boolean  @default(false)
+  createdAt  DateTime @default(now())
+
+  tenant  Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  records RecordLabel[]
+
+  @@unique([tenantId, slug])
+}
+
+// ===================== TRANSACCIONES =====================
+
+enum RecordType {
+  EXPENSE
+  INCOME
+  TRANSFER
+}
+
+enum PaymentType {
+  CASH
+  DEBIT_CARD
+  CREDIT_CARD
+  TRANSFER
+  VOUCHER
+  MOBILE_PAYMENT
+  CRYPTO
+  WEB_PAYMENT
+  OTHER
+}
+
+model TransferPair {
+  id          String      @id @default(uuid())
+  tenantId    String
+  // Tasa USADA al ejecutar la transferencia (P2P real, no BCV).
+  // Si la transferencia es entre cuentas de la misma moneda, esta tasa es 1.
+  appliedRate Decimal?    @db.Decimal(28, 12)
+  rateSource  RateSource?
+  notes       String?
+  occurredAt  DateTime
+  createdAt   DateTime    @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  records Record[]
+
+  @@index([tenantId, occurredAt])
+}
+
+model Record {
+  id               String      @id @default(uuid())
+  tenantId         String
+  accountId        String
+  categoryId       String?
+  type             RecordType
+  // Negativo para EXPENSE, positivo para INCOME. En TRANSFER: una leg<0, otra leg>0.
+  amount           Decimal     @db.Decimal(28, 8)
+  currencyCode     String
+  refAmount        Decimal?    @db.Decimal(28, 8)
+  refCurrencyCode  String?
+  exchangeRateId   String?
+  paymentType      PaymentType @default(CASH)
+  paymentTypeLabel String?
+  payee            String?
+  note             String?
+  occurredAt       DateTime
+  gpsLat           Float?
+  gpsLng           Float?
+  gpsAccuracy      Float?
+  warrantyMonths   Int?
+  transferPairId   String?
+  isTransfer       Boolean     @default(false)
+  receiptId        String?
+  importBatchId    String?
+  walletExternalId String?
+  isDraft          Boolean     @default(false)
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  tenant       Tenant        @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  account      Account       @relation(fields: [accountId], references: [id])
+  category     Category?     @relation(fields: [categoryId], references: [id])
+  currency     Currency      @relation("RecordCurrency", fields: [currencyCode], references: [code])
+  exchangeRate ExchangeRate? @relation(fields: [exchangeRateId], references: [id])
+  transferPair TransferPair? @relation(fields: [transferPairId], references: [id])
+  receipt      Receipt?      @relation(fields: [receiptId], references: [id])
+  importBatch  ImportBatch?  @relation(fields: [importBatchId], references: [id])
+  labels       RecordLabel[]
+
+  @@index([tenantId, occurredAt])
+  @@index([tenantId, accountId, occurredAt])
+  @@index([tenantId, categoryId])
+  @@index([transferPairId])
+}
+
+model RecordLabel {
+  recordId String
+  labelId  String
+
+  record Record @relation(fields: [recordId], references: [id], onDelete: Cascade)
+  label  Label  @relation(fields: [labelId], references: [id], onDelete: Cascade)
+
+  @@id([recordId, labelId])
+}
+
+// ===================== RECIBOS / FOTOS =====================
+
+enum ReceiptStatus {
+  UPLOADED
+  PARSING
+  PARSED
+  CONFIRMED
+  FAILED
+}
+
+model Receipt {
+  id           String        @id @default(uuid())
+  tenantId     String
+  uploadedById String
+  status       ReceiptStatus @default(UPLOADED)
+  merchant     String?
+  totalAmount  Decimal?      @db.Decimal(28, 8)
+  currencyCode String?
+  occurredAt   DateTime?
+  parsedData   Json?
+  parseError   String?
+  parsedAt     DateTime?
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  tenant  Tenant         @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  photos  ReceiptPhoto[]
+  records Record[]
+
+  @@index([tenantId, status])
+}
+
+model ReceiptPhoto {
+  id         String   @id @default(uuid())
+  receiptId  String
+  position   Int      @default(0)
+  storageKey String
+  mimeType   String
+  sizeBytes  Int
+  width      Int?
+  height     Int?
+  sha256     String   @unique
+  createdAt  DateTime @default(now())
+
+  receipt Receipt @relation(fields: [receiptId], references: [id], onDelete: Cascade)
+
+  @@index([receiptId, position])
+}
+
+// ===================== AUTOMATIZACIÓN / PLANTILLAS =====================
+
+model Template {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  payload    Json
+  categoryId String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([tenantId])
+}
+
+model AutomaticRule {
+  id         String   @id @default(uuid())
+  tenantId   String
+  name       String
+  condition  Json
+  action     Json
+  categoryId String?
+  isActive   Boolean  @default(true)
+  priority   Int      @default(0)
+  createdAt  DateTime @default(now())
+
+  tenant   Tenant    @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category Category? @relation(fields: [categoryId], references: [id])
+
+  @@index([tenantId, isActive, priority])
+}
+
+enum EnvelopePeriod {
+  WEEKLY
+  MONTHLY
+  YEARLY
+  CUSTOM
+}
+
+model Envelope {
+  id           String         @id @default(uuid())
+  tenantId     String
+  categoryId   String
+  name         String
+  period       EnvelopePeriod @default(MONTHLY)
+  amount       Decimal        @db.Decimal(28, 8)
+  currencyCode String
+  startsAt     DateTime
+  endsAt       DateTime?
+  isActive     Boolean        @default(true)
+  createdAt    DateTime       @default(now())
+
+  tenant   Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  category Category @relation(fields: [categoryId], references: [id])
+
+  @@index([tenantId, isActive])
+}
+
+// ===================== IMPORTS / AUDITORÍA =====================
+
+enum ImportSource {
+  WALLET_BUDGETBAKERS_CSV
+  WALLET_BUDGETBAKERS_XLS
+  CUSTOM_CSV
+  MANUAL
+}
+
+enum ImportStatus {
+  PENDING
+  PROCESSING
+  SUCCEEDED
+  FAILED
+  PARTIAL
+}
+
+model ImportBatch {
+  id           String       @id @default(uuid())
+  tenantId     String
+  source       ImportSource
+  status       ImportStatus @default(PENDING)
+  fileName     String?
+  storageKey   String?
+  totalRows    Int          @default(0)
+  importedRows Int          @default(0)
+  skippedRows  Int          @default(0)
+  errorRows    Int          @default(0)
+  report       Json?
+  startedAt    DateTime?
+  finishedAt   DateTime?
+  createdAt    DateTime     @default(now())
+
+  tenant  Tenant   @relation(fields: [tenantId], references: [id], onDelete: Cascade)
+  records Record[]
+
+  @@index([tenantId, status])
 }
