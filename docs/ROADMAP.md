@@ -5,8 +5,8 @@
 | # | Fase | Estado | Salida |
 |---|------|--------|--------|
 | 0 | Setup + Wallet API docs + repo skeleton | COMPLETADO | docs, monorepo, esquema Prisma inicial, design system |
-| 1 | Schema Prisma + import CSV (2217 records) | EN CURSO (90%) | schema completo, importer service y script CLI listos. Pendiente: correr migración + import contra DB real |
-| 2 | Multi-tenant + auth + super admin | pendiente | aislamiento por tenant |
+| 1 | Schema Prisma + import CSV (2217 records) | COMPLETADO | 2,216 records importados, 14 cuentas, 88 categorías, 214 tasas P2P inferidas en 25s |
+| 2 | Multi-tenant + auth + super admin | EN CURSO (40%) | endpoints REST funcionales con tenant via header (pre-auth), dashboard inicial con KPIs en USD-P2P real. Pendiente: auth real (JWT), super admin, login UI |
 | 3 | CRUD completo + responsive | pendiente | records, transfers, accounts, categories, labels, plantillas, reglas |
 | 4 | Export Wallet-compatible (CSV/XLS round-trip) | pendiente | data nunca atrapada |
 | 5 | Cripto + APIs de tasas | pendiente | USDT/BTC/ETH/SOL/USDC con rates auto |

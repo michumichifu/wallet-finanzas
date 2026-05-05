@@ -112,3 +112,93 @@ npm run import:wallet -- /home/lu/Downloads/report_2026-05-04_115314.csv
 Esto dejará 2,217 records importados, ~14 cuentas creadas, ~155 tasas P2P inferidas, listo para construir las vistas de lectura en sesión 2.
 
 **Próximo paso (sesión 2)**: correr migración + import efectivo, construir endpoints `GET /api/accounts`, `/api/categories`, `/api/records` (sin auth todavía, hardcoded a tenant default), iniciar layout shell del frontend con sidebar + dashboard placeholder usando los tokens de design system.
+
+---
+
+## 2026-05-04 (continuación) — Sesión 1.5: end-to-end fase 1 ejecutado
+
+**Setup Postgres**:
+- DB `wallet_finanzas` y user `wallet:wallet` creados con `CREATEDB` privileges.
+- Truco necesario: pg_hba.conf venía con `local all all md5` (sin peer auth para postgres user). Cambio temporal añadiendo `local all postgres peer` antes de la línea md5, reload, crear user/db, restaurar archivo original, reload de nuevo.
+- Conexión validada: `PGPASSWORD=wallet psql -h localhost -U wallet -d wallet_finanzas` OK.
+
+**Setup .env**:
+- `MASTER_KEY`, `JWT_SECRET`, `JWT_REFRESH_SECRET` generados con `openssl rand -hex 32` (cada uno 64 chars hex = 32 bytes).
+- DATABASE_URL apunta a localhost:5432.
+
+**Migración Prisma**:
+- `npx prisma migrate dev --name init` aplicó migración `20260505025213_init` y regeneró cliente.
+
+**Bug grande resuelto**: tsx no respeta `emitDecoratorMetadata`, lo que causaba que NestJS DI inyectara `undefined` en lugar del PrismaService al construir CatalogService. Síntoma: `Cannot read properties of undefined (reading 'currency')` al llamar `this.prisma.currency.upsert`. La propiedad `prisma` existía pero su valor era undefined silenciosamente. Cambio a `ts-node --transpile-only -r tsconfig-paths/register` lo solucionó. Sin esto, NestJS se ve afuera de `nest start` queda inservible.
+
+**Import del CSV ejecutado** (archivo `/home/lu/Downloads/report_2026-05-04_115314.csv`):
+
+| Métrica | Valor |
+|---|---|
+| Filas en CSV | 2,216 |
+| Records importados | 2,216 (0 errores) |
+| Tiempo | 25 s |
+| Cuentas creadas | 14 (BDV Bs, Mercantil Bs, USDT Binance, BDV USD, PayPal, Banco BHD pesos, EFECTIVO USD, Banco ACAP Pesos, Wally USD, Facebank PR, ApoloPay, Zinli, Efectivo, Efectivo COP) |
+| Categorías sembradas | 88 |
+| Monedas en catálogo | 17 |
+| Transfer pairs | 288 (= 576 records de tipo TRANSFER) |
+| Tasas P2P inferidas | 214 |
+| Rango temporal | 2024-04-29 → 2026-04-30 |
+| Distribución por tipo | 1362 EXPENSE / 278 INCOME / 576 TRANSFER |
+
+**Anomalía menor pendiente**: la cuenta "Banco ACAP Pesos" se importó con `currencyCode=USD` cuando debería ser DOP. La primera fila vista para esa cuenta en el CSV tenía currency USD por error (posible registro inicial mal anotado). El usuario lo puede corregir desde la UI futura, o lo arreglamos con un fix script en sesión 2.
+
+**Estado fase 1**: COMPLETADA end-to-end. La data del usuario está viva en Postgres listo para construir UI encima.
+
+---
+
+## 2026-05-04 — Sesión 2: API REST + dashboard frontend
+
+**Backend — endpoints REST listos**:
+- `GET /api/health` — status, DB ping, uptime.
+- `GET /api/accounts` — 14 cuentas con `balance` nativo + `balanceUsd` (tasa P2P real).
+- `GET /api/categories` y `/api/categories/tree` — flat + jerárquico.
+- `GET /api/records?from=&to=&accountId=&categoryId=&type=&search=&page=&pageSize=` — paginado, max 200/página, ordenado por `occurredAt desc`.
+- `GET /api/dashboard/summary?from=&to=` — totales del periodo + comparación con periodo anterior de igual duración.
+- `GET /api/dashboard/by-category?from=&to=&type=` — breakdown por categoría con `parentSlug` para agrupar.
+
+**Tenant context (pre-auth)**: `TenantContextMiddleware` lee header `X-Tenant-Slug`, default `luis`. Se inyecta `request.tenantId` con un cache por slug. Cuando llegue auth (fase 2 final), se reemplaza por un guard JWT sin cambiar los controllers (siguen usando `@Tenant() tenantId: string`).
+
+**Conversión a USD — `ExchangeService`**: política por moneda:
+1. USD/USDT/USDC → 1:1 (stable).
+2. VEF/VES → busca tasa con preferencia `BINANCE_P2P > INFERRED_FROM_TRANSFER > MANUAL > BCV`. Si no hay, `null` (no inventa).
+3. Otras → snapshot directo o inverso más cercano en tiempo.
+4. Fallback fijo conservador (DOP=60, COP=4000, etc.) si no hay snapshot.
+
+**Sample comparison** (abril 2026):
+- Wallet oficial (BCV-based): "$3.52 DOP" ≈ $0.06 USD → falso.
+- Nuestra app (P2P real): $607.53 gastos, $404.25 ingresos, neto -$203.28. Real.
+
+**Frontend — primer dashboard funcional**:
+- API client tipado (`src/lib/api.ts`) con axios + `X-Tenant-Slug` por defecto.
+- Theme store (Zustand persistido) con toggle dark/light + `bootstrapTheme()` para evitar flash inicial.
+- AppShell con sidebar (lucide-react icons, NavLink activo) + header con ThemeToggle, responsive.
+- DashboardPage:
+  - Periodo: mes actual (`Intl.toLocaleDateString` para el label).
+  - 4 KPIs: Ingreso, Gasto, Flujo neto, # Transacciones, con delta % vs mes anterior.
+  - Card de Cuentas con saldos por cuenta (icono según tipo CRYPTO/CASH/GENERAL) + total agregado en USD.
+  - Card "Por categoría" con bar-charts inline (top 8 gastos del mes).
+  - Skeletons en estados de carga.
+- React Query con `staleTime: 30s`, sin refetch on focus.
+- Tailwind 4 tokens del design system funcionando: `bg-bg`, `text-fg`, `bg-bg-subtle`, `bg-bg-muted`, `text-positive`, `text-negative`, `ring-border`, etc.
+- `font-variant-numeric: tabular-nums` aplicado a todos los montos via clase `tabular`.
+
+**Routing**:
+- `/` Dashboard
+- `/cuentas`, `/registros`, `/transferencias`, `/categorias`, `/ajustes` — placeholders con icono y mensaje (se construyen en sesiones 3+).
+- `BrowserRouter basename={import.meta.env.BASE_URL}` para deploy-agnóstico.
+
+**Issues menores resueltos**:
+- TypeScript 5 deprecation warning sobre `baseUrl` en tsconfig → agregado `"ignoreDeprecations": "6.0"`.
+- Sidebar `as const` causaba TS2339 al acceder `end` → convertido a `NavItem[]` con `end?: boolean` opcional.
+- CORS_ORIGINS extendido a `http://localhost:3000,http://localhost:3001` porque Panel Ads ya ocupa 3000 (Vite usa 3001).
+
+**Pendiente menor para sesión 3**:
+- Cuenta `Banco ACAP Pesos` quedó con `currencyCode=USD` por error en CSV original → sale con balance $423 cuando debería ser ~$2.37 (142 DOP / 60). Fix script o corrección desde UI cuando exista CRUD.
+
+**Próximo paso (sesión 3)**: páginas completas — Records con filtros y paginación, Cuentas con detalle y CRUD, Transferencias dedicada, formulario de registro nuevo. Después auth real.
