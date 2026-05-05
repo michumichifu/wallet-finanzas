@@ -14,14 +14,29 @@ export class CreateAccountDto {
   @IsOptional()
   type?: AccountType
 
+  @IsString()
+  @MaxLength(80)
+  @IsOptional()
+  bankName?: string
+
   @IsHexColor()
   @IsOptional()
   color?: string
+
+  @IsHexColor()
+  @IsOptional()
+  iconColor?: string
 
   @IsString()
   @MaxLength(60)
   @IsOptional()
   iconKey?: string
+
+  /** Data URL o URL externa. Limitamos tamaño para evitar payloads gigantes. */
+  @IsString()
+  @MaxLength(500_000)
+  @IsOptional()
+  photoUrl?: string
 
   @IsNumber()
   @IsOptional()

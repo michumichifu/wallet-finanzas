@@ -92,12 +92,21 @@ export interface AccountListItem {
   name: string
   type: string
   currencyCode: string
+  bankName: string | null
   color: string | null
   iconKey: string | null
+  iconColor: string | null
+  photoUrl: string | null
   excludeFromTotals: boolean
   isArchived: boolean
   position: number
   balance: string
+  balanceUsd: number | null
+}
+
+export interface BalanceHistoryPoint {
+  date: string
+  balance: number
   balanceUsd: number | null
 }
 
@@ -260,10 +269,33 @@ export const Api = {
 
   // Accounts
   listAccounts: () => api.get<AccountListItem[]>('/accounts').then((r) => r.data),
-  createAccount: (payload: { name: string; currencyCode: string; type?: string; initialBalance?: number }) =>
-    api.post<AccountListItem>('/accounts', payload).then((r) => r.data),
-  patchAccount: (id: string, payload: Partial<{ name: string; currencyCode: string; type: string; isArchived: boolean; excludeFromTotals: boolean }>) =>
-    api.patch<AccountListItem>(`/accounts/${id}`, payload).then((r) => r.data),
+  getAccount: (id: string) => api.get<AccountListItem>(`/accounts/${id}`).then((r) => r.data),
+  accountBalanceHistory: (id: string, from: string, to: string) =>
+    api.get<{ points: BalanceHistoryPoint[] }>(`/accounts/${id}/balance-history`, { params: { from, to } }).then((r) => r.data),
+  createAccount: (payload: {
+    name: string
+    currencyCode: string
+    type?: string
+    bankName?: string
+    color?: string
+    iconKey?: string
+    iconColor?: string
+    photoUrl?: string
+    initialBalance?: number
+    excludeFromTotals?: boolean
+  }) => api.post<AccountListItem>('/accounts', payload).then((r) => r.data),
+  patchAccount: (id: string, payload: Partial<{
+    name: string
+    type: string
+    bankName: string | null
+    color: string | null
+    iconKey: string | null
+    iconColor: string | null
+    photoUrl: string | null
+    initialBalance: number
+    excludeFromTotals: boolean
+    isArchived: boolean
+  }>) => api.patch<AccountListItem>(`/accounts/${id}`, payload).then((r) => r.data),
   fixAccountCurrency: (id: string, currencyCode: string) =>
     api.patch<{ updatedRecords: number }>(`/accounts/${id}/fix-currency`, { currencyCode }).then((r) => r.data),
   archiveAccount: (id: string) => api.delete(`/accounts/${id}`).then((r) => r.data),

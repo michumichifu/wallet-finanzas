@@ -1,9 +1,11 @@
 import { useMemo, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowDownRight, ArrowUpRight, Bitcoin, Coins, DollarSign, Wallet, Banknote } from 'lucide-react'
+import { ArrowDownRight, ArrowUpRight, Coins, DollarSign, Plus } from 'lucide-react'
+import { Link } from 'react-router-dom'
 import { Api, type AccountListItem, type CategoryBreakdownItem } from '@/lib/api'
-import { fmtCount, fmtMoneyByCurrency, fmtPercentDelta, fmtUsd } from '@/lib/format'
+import { fmtCount, fmtPercentDelta, fmtUsd } from '@/lib/format'
 import { Card, CardBody, CardHeader, CardTitle } from '@/components/ui/Card'
+import { AccountCard } from '@/components/AccountCard'
 import { DateRangePicker, computeRange, type DateRange } from '@/components/DateRangePicker'
 import { cn } from '@/lib/cn'
 
@@ -36,15 +38,36 @@ export function DashboardPage() {
         <DateRangePicker value={range} onChange={setRange} />
       </header>
 
+      <AccountsGrid accounts={accountsQ.data ?? []} loading={accountsQ.isLoading} />
+
       <KpiRow summary={summaryQ.data} loading={summaryQ.isLoading} />
 
-      <section className="grid gap-4 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <AccountsCard accounts={accountsQ.data ?? []} loading={accountsQ.isLoading} />
-        </div>
-        <BreakdownCard items={breakdownQ.data ?? []} loading={breakdownQ.isLoading} />
-      </section>
+      <BreakdownCard items={breakdownQ.data ?? []} loading={breakdownQ.isLoading} />
     </div>
+  )
+}
+
+function AccountsGrid({ accounts, loading }: { accounts: AccountListItem[]; loading: boolean }) {
+  const visible = accounts.filter((a) => !a.isArchived)
+  return (
+    <section className="grid grid-cols-2 gap-2.5 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5">
+      {loading
+        ? Array.from({ length: 10 }).map((_, i) => (
+            <div key={i} className="h-[68px] animate-pulse rounded-lg bg-bg-muted" />
+          ))
+        : visible.map((a) => <AccountCard key={a.id} account={a} to={`/cuentas/${a.id}`} />)}
+      <Link
+        to="/cuentas"
+        className={cn(
+          'flex h-[68px] items-center justify-center gap-1.5 rounded-lg border border-dashed border-border',
+          'text-xs font-medium uppercase tracking-wider text-fg-muted',
+          'hover:border-accent hover:text-accent transition-colors',
+        )}
+      >
+        <Plus className="size-3.5" strokeWidth={2} />
+        Agregar cuenta
+      </Link>
+    </section>
   )
 }
 
@@ -146,74 +169,6 @@ function KpiCard({
         <div className={cn('flex size-9 items-center justify-center rounded-lg ring-1', accentRing)}>{icon}</div>
       </div>
     </Card>
-  )
-}
-
-function AccountsCard({ accounts, loading }: { accounts: AccountListItem[]; loading: boolean }) {
-  const totalUsd = accounts
-    .filter((a) => !a.excludeFromTotals && !a.isArchived)
-    .reduce((sum, a) => sum + (a.balanceUsd ?? 0), 0)
-
-  const visible = accounts.filter((a) => !a.isArchived)
-
-  return (
-    <Card>
-      <CardHeader>
-        <CardTitle hint="Saldos actuales por cuenta — equivalencia USD con tasa P2P real">Cuentas</CardTitle>
-        <p className="text-sm font-semibold tabular text-fg">{fmtUsd(totalUsd)}</p>
-      </CardHeader>
-      <CardBody className="p-0">
-        <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
-          <div className="divide-y divide-border">
-            {(loading ? Array.from({ length: 7 }) : visible.slice(0, Math.ceil(visible.length / 2))).map(
-              (a, i) => (loading ? <AccountRowSkeleton key={i} /> : a ? <AccountRow key={(a as AccountListItem).id} account={a as AccountListItem} /> : null),
-            )}
-          </div>
-          <div className="divide-y divide-border">
-            {(loading ? Array.from({ length: 7 }) : visible.slice(Math.ceil(visible.length / 2))).map(
-              (a, i) => (loading ? <AccountRowSkeleton key={i} /> : a ? <AccountRow key={(a as AccountListItem).id} account={a as AccountListItem} /> : null),
-            )}
-          </div>
-        </div>
-      </CardBody>
-    </Card>
-  )
-}
-
-function AccountRow({ account }: { account: AccountListItem }) {
-  const isCrypto = account.type === 'CRYPTO'
-  const isCash = account.type === 'CASH'
-  return (
-    <div className="flex items-center gap-3 px-5 py-3">
-      <div
-        className={cn(
-          'flex size-9 shrink-0 items-center justify-center rounded-lg ring-1',
-          isCrypto ? 'bg-warning/10 ring-warning/30 text-warning' : isCash ? 'bg-bg-muted ring-border text-fg-muted' : 'bg-accent/10 ring-accent/30 text-accent',
-        )}
-      >
-        {isCrypto ? <Bitcoin className="size-4" strokeWidth={2} /> : isCash ? <Banknote className="size-4" strokeWidth={2} /> : <Wallet className="size-4" strokeWidth={2} />}
-      </div>
-      <div className="min-w-0 flex-1">
-        <p className="truncate text-sm font-medium text-fg">{account.name}</p>
-        <p className="text-xs text-fg-subtle tabular">{fmtMoneyByCurrency(account.balance, account.currencyCode)}</p>
-      </div>
-      <div className="text-right">
-        <p className="text-sm font-medium tabular text-fg">{fmtUsd(account.balanceUsd)}</p>
-      </div>
-    </div>
-  )
-}
-
-function AccountRowSkeleton() {
-  return (
-    <div className="flex items-center gap-3 px-5 py-3">
-      <div className="size-9 shrink-0 animate-pulse rounded-lg bg-bg-muted" />
-      <div className="flex-1 space-y-1.5">
-        <div className="h-3 w-32 animate-pulse rounded bg-bg-muted" />
-        <div className="h-2.5 w-20 animate-pulse rounded bg-bg-muted" />
-      </div>
-      <div className="h-3 w-16 animate-pulse rounded bg-bg-muted" />
-    </div>
   )
 }
 

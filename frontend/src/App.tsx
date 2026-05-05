@@ -5,6 +5,7 @@ import { ProtectedRoute } from '@/components/ProtectedRoute'
 import { DashboardPage } from '@/pages/Dashboard'
 import { RecordsPage } from '@/pages/Records'
 import { AccountsPage } from '@/pages/Accounts'
+import { AccountDetailPage } from '@/pages/AccountDetail'
 import { CategoriesPage } from '@/pages/Categories'
 import { TransfersPage } from '@/pages/Transfers'
 import { RulesPage } from '@/pages/Rules'
@@ -36,6 +37,7 @@ export default function App() {
             <Route element={<AppShell />}>
               <Route index element={<DashboardPage />} />
               <Route path="cuentas" element={<AccountsPage />} />
+              <Route path="cuentas/:id" element={<AccountDetailPage />} />
               <Route path="registros" element={<RecordsPage />} />
               <Route path="transferencias" element={<TransfersPage />} />
               <Route path="categorias" element={<CategoriesPage />} />

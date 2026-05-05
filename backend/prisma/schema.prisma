@@ -206,10 +206,18 @@ enum AccountType {
   GENERAL
   CASH
   SAVINGS
+  CHECKING
   CREDIT_CARD
+  DEBIT_CARD
   INVESTMENT
   CRYPTO
+  CRYPTO_EXCHANGE
+  CRYPTO_WALLET
   LOAN
+  MORTGAGE
+  BOND
+  LIFE_INSURANCE
+  OVERDRAFT
   OTHER
 }
 
@@ -219,8 +227,17 @@ model Account {
   name              String
   currencyCode      String
   type              AccountType @default(GENERAL)
-  color             String?
+  /// Detalle libre del subtipo: nombre del banco/exchange/wallet
+  /// (ej. "BDV", "Mercantil", "Binance", "Phantom", "MetaMask").
+  bankName          String?
+  /// Nombre de icono lucide-react (ej. "wallet", "bitcoin", "credit-card").
   iconKey           String?
+  /// Color del icono (hex, ej. "#FFB300"). Si null, usa el accent del tema.
+  iconColor         String?
+  /// Color de la tarjeta (fondo). Hex.
+  color             String?
+  /// Foto/logo subida por el usuario. Data URL o URL externa.
+  photoUrl          String?
   initialBalance    Decimal     @db.Decimal(28, 8) @default(0)
   cryptoAddress     String?
   excludeFromTotals Boolean     @default(false)

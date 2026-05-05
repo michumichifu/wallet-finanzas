@@ -1,4 +1,4 @@
-import { Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
+import { BadRequestException, Body, Controller, Delete, Get, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common'
 import { Tenant } from '@/tenant/tenant.decorator'
 import { AccountsService } from './accounts.service'
 import { CreateAccountDto } from './dto/create-account.dto'
@@ -11,6 +11,25 @@ export class AccountsController {
   @Get()
   list(@Tenant() tenantId: string, @Query('includeArchived') includeArchived?: string) {
     return this.accounts.listForTenant(tenantId, { includeArchived: includeArchived === 'true' })
+  }
+
+  @Get(':id')
+  getOne(@Tenant() tenantId: string, @Param('id', new ParseUUIDPipe()) id: string) {
+    return this.accounts.getOne(tenantId, id)
+  }
+
+  @Get(':id/balance-history')
+  balanceHistory(
+    @Tenant() tenantId: string,
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @Query('from') from: string,
+    @Query('to') to: string,
+  ) {
+    if (!from || !to) throw new BadRequestException('from y to requeridos')
+    return this.accounts.balanceHistory(tenantId, id, {
+      from: new Date(from),
+      to: new Date(to),
+    })
   }
 
   @Post()
