@@ -364,11 +364,140 @@ Esto dejará 2,217 records importados, ~14 cuentas creadas, ~155 tasas P2P infer
 - POST `/templates/:id/apply` → record creado con amount=-2000 (signo aplicado), note copiada, occurredAt=now.
 - DELETE template + DELETE record de prueba → OK.
 
-**Pendiente sesión 6**:
-- Categorías reordenables (drag-and-drop) — feature de pulido.
-- Labels editables (CRUD) — usado para tags secundarios.
-- Reglas automáticas (auto-categorizar nuevos records por patrón en note/payee).
-- Selector de tenant activo en sidebar (cuando el user pertenezca a múltiples).
-- Super admin panel (lista global de tenants, métricas, soporte).
-- Export CSV/XLS compatible con Wallet original (round-trip).
-- Sub-fase de design: ajustar paleta y densidad si el user lo solicita tras usar la app un par de días.
+---
+
+## 2026-05-05 — Sesión 6: Export Wallet-compatible + DateRangePicker + Settings
+
+**Backend — ExportModule**:
+- `WalletCsvExporter`: produce CSV idéntico al export oficial de Wallet by BudgetBakers. BOM UTF-8, separador `;`, "Gastos"/"Ingresos" en español, transfer "true"/"false", envelope_id preservado de `Category.walletEnvelopeId`. Round-trip verificado contra el CSV original importado en sesión 1.5.
+- `GET /api/export/wallet-csv?from=&to=` retorna `text/csv` attachment.
+- Detalle TypeScript: `import type { Response } from 'express'` para satisfacer `isolatedModules` en NestJS 11.
+
+**Frontend — DateRangePicker** (`components/DateRangePicker.tsx`):
+- Presets: Este mes, Mes pasado, Últimos 3 meses, Últimos 6 meses, Este año, Año pasado, Todo el historial.
+- Rango personalizado con dos inputs date.
+- `computeRange(preset)` exportado para usar fuera del componente.
+- Click outside + Escape close.
+
+**Frontend — Dashboard y Records con date range**:
+- Dashboard usa el picker (default "Este mes"). KPIs y breakdown re-fetchan al cambiar.
+- Records usa el picker (default "Todo el historial" para ver toda la data).
+
+**Frontend — Settings page** (`/ajustes`, reemplaza placeholder):
+- Card "Cuenta" con name/email/role/tenant.
+- Card "Exportar" con toggle de rango (Todo / Este año / Este mes) + botón "Descargar CSV".
+- Triggers blob download via `Api.exportWalletCsv` que retorna el archivo como Blob.
+
+**Tag**: `v0.6.0`.
+
+**Pendiente sesión 7**:
+- Reglas automáticas (auto-categorizar)
+- Export XLS además del CSV
+- Super admin panel
+- Selector de tenant
+- Multi-condition en reglas
+
+---
+
+## 2026-05-05 — Sesión 7: Reglas automáticas + export XLS
+
+**Backend — RulesModule**:
+- Nueva entidad `AutomaticRule` (ya en schema desde sesión 1) con CRUD.
+- Predicate engine en `dto/rule-condition.ts`:
+  - Operators: `contains`, `notContains`, `equals`, `startsWith`, `endsWith`, `gt`, `gte`, `lt`, `lte`.
+  - Combinator AND/OR sobre N items.
+  - Case-insensitive por default, configurable.
+- Endpoints: GET/POST/PATCH/DELETE + `POST /apply-all?overwriteAll=true|false`.
+- Política `apply-all`: por default solo categoriza records sin categoría; con `overwriteAll=true` re-clasifica todos.
+- **Hook on-create**: `RecordsService.create` llama a `RulesService.evaluateForRecord` cuando el user no especificó categoría. La primera regla activa que matchea (orden por priority asc) gana.
+
+**Backend — WalletXlsExporter**:
+- `xlsx` library. Produce `.xls` con dos hojas: "Registros" (mismo schema que CSV) + "Deudas" (vacía con header válido — Wallet original tiene este sheet aunque casi nadie lo usa).
+- Fechas serializadas como Excel serial number. Transfer flag como 0/1.
+- `GET /api/export/wallet-xls` retorna `application/vnd.ms-excel`.
+
+**Frontend — Página Reglas** (`/reglas`):
+- Sidebar nueva entrada con icono `Sparkles` entre Categorías y Ajustes.
+- Lista de reglas con toggle activar/desactivar (slider switch), badge de tipo, edit/delete.
+- Drawer con form single-condition (field + operator + value + categoría destino). API soporta multi-condition AND/OR pero la UI por simplicidad solo expone una condición; iterar después.
+- Botón "Aplicar a registros sin categoría" (seguro). Botón secundario "Sobreescribir categorías existentes" (peligroso, en card aparte).
+- Resultado del apply muestra "Escaneados X registros · Y categorizados".
+
+**Frontend — XLS button en Settings**:
+- Junto al CSV, botón "XLS" descargando el `.xls`.
+- Refactor de `rangeParams()` y `downloadBlob(blob, ext)` para reusar entre formatos.
+
+**Smoke tests**:
+- Crear regla "note contains cochino → Comestibles" + apply-all → OK.
+- Export XLS detectado como CDFV2 (Microsoft Excel real) por `file`.
+
+**Tag**: `v0.7.0`.
+
+**Pendiente sesión 8**:
+- UX de cuentas tipo Wallet (grid 5 col, iconos custom, foto upload, color)
+- Detalle de cuenta con gráfica histórica
+- Tipos de cuenta más granulares (cripto exchange/wallet, banco/neobanco, etc.)
+- Bloquear cambio de moneda tras crear
+
+---
+
+## 2026-05-05 — Sesión 8: Account UX rico (grid + iconos + colores + fotos + detail page)
+
+**Trigger**: usuario mostró screenshots de Wallet by BudgetBakers (dashboard con grid 5 columnas, modal de detalle con gráfica histórica, modal de edit con color/tipo/monto inicial/toggles). Pidió igualar y mejorar (foto upload + iconos custom de librería + más subtipos de cuenta).
+
+**Schema migration `20260505155236_account_subtypes_and_visuals`**:
+- AccountType enum extendido con: `CHECKING`, `DEBIT_CARD`, `CRYPTO_EXCHANGE`, `CRYPTO_WALLET`, `MORTGAGE`, `BOND`, `LIFE_INSURANCE`, `OVERDRAFT`. Mantiene los anteriores (`GENERAL`, `CASH`, `SAVINGS`, `CREDIT_CARD`, `INVESTMENT`, `CRYPTO`, `LOAN`, `OTHER`).
+- Account: nuevos campos `bankName` (string, ej "BHD"/"Binance"/"Phantom"), `iconColor` (hex), `photoUrl` (data URL o URL externa).
+
+**Backend**:
+- `AccountsService.getOne(tenantId, id)`: devuelve cuenta completa con saldo y USD-equiv.
+- `AccountsService.balanceHistory(tenantId, id, {from, to})`: genera 1 punto por día. Saldo acumulado parte de `initialBalance + records antes de from`, luego camina día a día sumando records hasta `endOfDay`. Cada punto incluye `balanceUsd` con la tasa P2P al final del día.
+- `GET /api/accounts/:id` y `GET /api/accounts/:id/balance-history?from=&to=`.
+- `update()`: bloquea cambio de `currencyCode` con BadRequestException sugiriendo usar `/fix-currency`.
+
+**Frontend — AccountCard** (`components/AccountCard.tsx`):
+- Tarjeta colorida con icono lucide tinted con `iconColor` o foto subida (`photoUrl` prevalece sobre icono).
+- Muestra nombre, saldo nativo, USD equiv si la moneda no es USD/USDT/USDC.
+- `resolveLucideIcon(key)` mapea kebab-case → componente Lucide. Default Wallet.
+
+**Frontend — Dashboard reorganizado**:
+- Cards de cuentas en grid de 2/3/4/5 columnas según viewport (igual a Wallet).
+- Cada card es link a `/cuentas/:id`.
+- Tile "+ Agregar cuenta" al final.
+
+**Frontend — Página detalle `/cuentas/:id`** (`pages/AccountDetail.tsx`):
+- Header con icono/foto + bank name + tipo label en español.
+- Botones Editar y Archivar (con confirm).
+- Tabs Saldo / Registros + DateRangePicker.
+- Tab Saldo: AreaChart de recharts con balanceUsd diario, gradient fill, tooltip custom, delta % vs inicio del periodo.
+- Tab Registros: tabla pre-filtrada `accountId={id}`, edit por fila.
+
+**Frontend — AccountDrawer** (`components/AccountDrawer.tsx`, extraído):
+- Preview en vivo de cómo se ve la card mientras editas.
+- 16 colores preset + ColorPicker custom para card y para icono.
+- 20 iconos populares de finanzas (wallet, piggy-bank, banknote, credit-card, landmark, building-2, bitcoin, trending-up, briefcase, shield, gem, home, car, gift, shopping-cart, utensils, plane, wifi, phone, coins).
+- Upload de foto: data URL inline (PNG/JPEG/WebP/SVG hasta 400 KB).
+- Tipo de cuenta con 16 opciones (incluyendo cripto exchange/wallet).
+- Campo "Detalle" (bankName) con hints contextuales según tipo.
+- Moneda disabled en edit.
+- Monto inicial disabled en edit.
+- Toggles "Excluir de las estadísticas" y "Archivar" con descripciones tipo Wallet original.
+
+**Tag**: `v0.8.0`.
+
+**Bug encontrado y resuelto**: `<input type="color">` nativo abre picker del SO, que en drawer derecho de pantalla angosta se sale del viewport. Fix: nuevo componente `ColorPicker` (`components/ui/ColorPicker.tsx`) usando `react-colorful` (~3 KB gz). Popover anclado a la derecha del swatch que se expande hacia adentro del drawer. Incluye HEX text input para paste preciso, click-outside y ESC para cerrar.
+
+**Bundle warning**: 1.4 MB JS (385 KB gz). La importación dinámica de iconos lucide por nombre kebab-case obliga a cargar toda la librería. Aceptable para el uso interno actual; optimización posible: dynamic import por icono con `React.lazy`, o switch a icon-sprite generado en build.
+
+**Pendiente sesión 9**:
+- RecordDrawer rico: etiquetas (Labels CRUD), tipo de pago, estado del pago (booked/pending), checkbox "Crear plantilla desde este registro" igual a Wallet.
+- Multi-condition UI en Rules.
+- Tasa P2P automática vía Binance API (cron job que actualiza ExchangeRate cada hora).
+- Selector de tenant + super admin panel.
+- Reordenamiento drag-and-drop de categorías.
+- Optimization: lazy load icons.
+- Receipt photos (fase 7 del roadmap original) + IA BYOK (fase 8).
+- API pública per-tenant + MCP server (fases 9-10).
+- PWA + offline-first sync (fase 11).
+- Capacitor APK (fase 12).
+- Deploy a VPS 1 (`wallet.creceideas.com`).
