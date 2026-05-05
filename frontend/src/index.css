@@ -1,0 +1,59 @@
+@import "tailwindcss";
+
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, "Cascadia Code", "Roboto Mono", monospace;
+
+  --color-bg: oklch(99% 0.003 220);
+  --color-bg-subtle: oklch(97.5% 0.005 220);
+  --color-bg-muted: oklch(94% 0.006 220);
+  --color-border: oklch(90% 0.008 220);
+  --color-border-strong: oklch(82% 0.01 220);
+  --color-fg: oklch(18% 0.015 240);
+  --color-fg-muted: oklch(45% 0.012 240);
+  --color-fg-subtle: oklch(62% 0.008 240);
+
+  --color-accent: oklch(58% 0.16 248);
+  --color-accent-fg: oklch(99% 0 0);
+  --color-positive: oklch(62% 0.16 145);
+  --color-negative: oklch(58% 0.21 25);
+  --color-warning: oklch(72% 0.16 75);
+}
+
+.dark {
+  --color-bg: oklch(14% 0.012 240);
+  --color-bg-subtle: oklch(17% 0.014 240);
+  --color-bg-muted: oklch(22% 0.014 240);
+  --color-border: oklch(27% 0.012 240);
+  --color-border-strong: oklch(35% 0.014 240);
+  --color-fg: oklch(96% 0.005 220);
+  --color-fg-muted: oklch(72% 0.012 240);
+  --color-fg-subtle: oklch(55% 0.014 240);
+
+  --color-accent: oklch(70% 0.16 248);
+  --color-accent-fg: oklch(14% 0.012 240);
+  --color-positive: oklch(72% 0.18 150);
+  --color-negative: oklch(68% 0.22 22);
+  --color-warning: oklch(80% 0.16 75);
+}
+
+html, body, #root {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-fg);
+  font-family: var(--font-sans);
+  font-feature-settings: "cv11", "ss01", "ss03";
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.tabular {
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum", "cv11";
+}
